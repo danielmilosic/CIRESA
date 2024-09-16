@@ -1,4 +1,4 @@
-def download_stereo_a(timeframe):
+def download(timeframe):
     import pyspedas
 
     pyspedas.stereo.mag(trange=timeframe, time_clip=True, get_support_data=True
@@ -6,7 +6,7 @@ def download_stereo_a(timeframe):
     pyspedas.stereo.plastic(trange=timeframe, time_clip=True, get_support_data=True, level = 'l2', datatype='1min'
                     , downloadonly=True)
     
-def reduce_stereo_a(timeframe, cadence):
+def reduce(timeframe, cadence):
 
     from CIRESA import filefinder, read_cdf_to_df, get_coordinates
     import pandas as pd
@@ -84,7 +84,7 @@ def reduce_stereo_a(timeframe, cadence):
     return stereo_a_df
 
 
-def plot_stereo_a(stereo_a_df):
+def plot(stereo_a_df):
     
     import matplotlib.pyplot as plt
     import seaborn as sns
@@ -174,7 +174,7 @@ def plot_stereo_a(stereo_a_df):
     plt.tight_layout(pad=1., w_pad=0.5, h_pad=.1)
 
 
-def load_stereo_a(month):
+def load(month):
         
     from CIRESA import filefinder
     import pandas as pd
@@ -197,7 +197,7 @@ def load_stereo_a(month):
 
     return pd.concat(spacecraft)
 
-def delete_stereo_a(month):
+def delete(month):
     
     from CIRESA import filefinder
     import os
@@ -232,7 +232,7 @@ def delete_stereo_a(month):
             print(f"Error deleting {file_path}: {e}")
 
 
-def download_reduce_save_space_stereo_a(month, cadence):
+def download_reduce_save_space(month, cadence):
 
     from CIRESA import stereo_a, filefinder
     import os
@@ -245,16 +245,22 @@ def download_reduce_save_space_stereo_a(month, cadence):
     for m in month:
 
         if os.path.exists('reduced_data\stereo_a\stereo_a_data'+m+'.parquet'):
-            stereo_a_df = stereo_a.load_stereo_a(m)
+            stereo_a_df = stereo_a.load(m)
 
         else:
             timeframe = filefinder.get_month_dates(m)
 
-            stereo_a.download_stereo_a(timeframe)
-            stereo_a_df = stereo_a.reduce_stereo_a(timeframe, cadence)
+            stereo_a.download(timeframe)
+            stereo_a_df = stereo_a.reduce(timeframe, cadence)
             stereo_a_df.to_parquet('reduced_data\stereo_a\stereo_a_data'+m+'.parquet')
 
-        stereo_a.plot_stereo_a(stereo_a_df)
-        plt.savefig('stereo_data/monthly_plots/stereo_a'+m+'.png')
-        stereo_a.delete_stereo_a(m)
-
+        try:
+            # Plot and save the figure
+            stereo_a.plot(stereo_a_df)
+            plt.savefig(f'stereo_data/monthly_plots/stereo_a_{m}.png')
+            plt.close()  # Close the plot to free up memory
+        except Exception as e:
+            print(f"Error plotting data for {m}: {e}")
+        finally:
+            # Ensure stereo_a.delete() is called regardless of success or failure
+            stereo_a.delete(m)

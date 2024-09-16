@@ -1,4 +1,4 @@
-def download_solo(timeframe):
+def download(timeframe):
     import pyspedas
 
     pyspedas.solo.swa(trange=timeframe, time_clip=True, level='l2', datatype='pas-grnd-mom', get_support_data=True
@@ -8,7 +8,7 @@ def download_solo(timeframe):
     pyspedas.solo.mag(trange=timeframe, time_clip=True, get_support_data=True
                  , downloadonly=True)
     
-def reduce_solo(timeframe, cadence):
+def reduce(timeframe, cadence):
 
     from CIRESA import filefinder, read_cdf_to_df, get_coordinates
     import pandas as pd
@@ -32,14 +32,14 @@ def reduce_solo(timeframe, cadence):
 
     print('### EXTRACTING MAGNETIC FIELD DATA ###')
 
-    if sum(os.path.getsize(f) for f in mag_files) > 1e9:
+    if sum(os.path.getsize(f) for f in mag_files) > 3e8:
  
         print('### LARGE MAGNETIC FIELD FILES ###')
         mag_df = []
 
         for f in mag_files:
                 
-                print(f, os.path.getsize(f)/1000000, 'MB')
+                print(os.path.getsize(f)/1000000, 'MB', f)
                 mag_loop_df = read_cdf_to_df.read_cdf_files_to_dataframe([f], ['Epoch', 'B_RTN'])
                 mag_loop_df['Time']= pd.to_datetime(Time(mag_loop_df['Epoch'], format='cdf_tt2000', scale='utc').iso)
                 mag_loop_df['B_R'] = mag_loop_df['B_RTN'].apply(lambda lst: lst[0])
@@ -95,15 +95,21 @@ def reduce_solo(timeframe, cadence):
     # GET COORDINATES
     coord_df = swa_df.resample(rule='6H').median()
     carr_lons, solo_r, solo_lats, solo_lon = get_coordinates.get_coordinates(coord_df, 'Solar Orbiter')
-    coord_df['CARR_LON'] = carr_lons
-    coord_df['CARR_LON_RAD'] = coord_df['CARR_LON']/180*3.1415926
+    coord_df['CARR_LON'] = np.asarray(carr_lons) % 360
     coord_df['LAT'] = solo_lats
+    solo_lon = np.asarray(solo_lon)
+    if (solo_lon < -175).any() & (solo_lon > 175).any():
+        solo_lon[solo_lon < 0] += 360
+
     coord_df['INERT_LON'] = solo_lon
     coord_df['R'] = solo_r
 
-    coord_df = coord_df.resample(rule=cadence).interpolate(method='linear')
-    swa_df['CARR_LON'] = coord_df['CARR_LON'].copy()
+    coord_df = coord_df.reindex(swa_df.index).interpolate(method='linear')
+    swa_df['CARR_LON'] = coord_df['CARR_LON'].copy()*np.nan
+    swa_df.loc[coord_df.index, 'CARR_LON'] = get_coordinates.calculate_carrington_longitude_from_lon(coord_df.index, coord_df['INERT_LON'])
+    swa_df['CARR_LON_RAD'] = swa_df['CARR_LON']/180*3.1415926
     swa_df['LAT'] = coord_df['LAT'].copy()
+   
     swa_df['INERT_LON'] = coord_df['INERT_LON'].copy()
     swa_df['R'] = coord_df['R'].copy()
 
@@ -132,7 +138,7 @@ def reduce_solo(timeframe, cadence):
 
     return solo_df
 
-def plot_solo(solo_df):
+def plot(solo_df):
     
     import matplotlib.pyplot as plt
     import seaborn as sns
@@ -232,7 +238,7 @@ def plot_solo(solo_df):
 
 
 
-def load_solo(month):
+def load(month):
         
     from CIRESA import filefinder
     import pandas as pd
@@ -255,7 +261,7 @@ def load_solo(month):
 
     return pd.concat(spacecraft)
 
-def delete_solo(month):
+def delete(month):
     
     from CIRESA import filefinder
     import os
@@ -290,29 +296,38 @@ def delete_solo(month):
             print(f"Error deleting {file_path}: {e}")
 
 
-def download_reduce_save_space_solo(month, cadence):
+def download_reduce_save_space(month, cadence):
 
     from CIRESA import solo, filefinder
     import os
     import matplotlib.pyplot as plt
-
+    import pandas as pd
     
     if isinstance(month, str):
         month = [month]
 
     for m in month:
-
-        if os.path.exists('reduced_data\solo\solo_data'+m+'.parquet'):
-            solo_df = solo.load_solo(m)
-
+        if pd.to_datetime(m) < pd.to_datetime('2020-02') :
+            print('### NO SOLO DATA BEFORE 2020-02 ###')
         else:
-            timeframe = filefinder.get_month_dates(m)
 
-            solo.download_solo(timeframe)
-            solo_df = solo.reduce_solo(timeframe, cadence)
-            solo_df.to_parquet('reduced_data\solo\solo_data'+m+'.parquet')
+            if os.path.exists('reduced_data\solo\solo_data'+m+'.parquet'):
+                solo_df = solo.load(m)
 
-        solo.plot_solo(solo_df)
-        plt.savefig('solar_orbiter_data/monthly_plots/solo'+m+'.png')
-        solo.delete_solo(m)
+            else:
+                timeframe = filefinder.get_month_dates(m)
 
+                solo.download(timeframe)
+                solo_df = solo.reduce(timeframe, cadence)
+                solo_df.to_parquet('reduced_data\solo\solo_data'+m+'.parquet')
+
+        try:
+            # Plot and save the figure
+            solo.plot(solo_df)
+            plt.savefig(f'solar_orbiter_data/monthly_plots/solo_{m}.png')
+            plt.close()  # Close the plot to free up memory
+        except Exception as e:
+            print(f"Error plotting data for {m}: {e}")
+        finally:
+            # Ensure solo.delete() is called regardless of success or failure
+            solo.delete(m)

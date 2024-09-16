@@ -1,11 +1,11 @@
-def download_omni(timeframe):
+def download(timeframe):
     import pyspedas
 
     pyspedas.omni.data(trange=timeframe, time_clip=True, datatype='1min', get_support_data=True
                 , downloadonly=True)
 
     
-def reduce_omni(timeframe, cadence):
+def reduce(timeframe, cadence):
 
     from CIRESA import filefinder, read_cdf_to_df, get_coordinates
     import pandas as pd
@@ -46,15 +46,22 @@ def reduce_omni(timeframe, cadence):
     # GET COORDINATES
     coord_df = omni_df.resample(rule='6H').median()
     carr_lons, omni_r, omni_lats, omni_lon = get_coordinates.get_coordinates(coord_df, '3')
-    coord_df['CARR_LON'] = carr_lons
+    coord_df['CARR_LON'] = np.asarray(carr_lons) % 360
     coord_df['LAT'] = omni_lats
+    omni_lon = np.asarray(omni_lon)
+    if (omni_lon < -175).any() & (omni_lon > 175).any():
+        omni_lon[omni_lon < 0] += 360
+
     coord_df['INERT_LON'] = omni_lon
     coord_df['R'] = omni_r
 
-    coord_df = coord_df.resample(rule=cadence).interpolate(method='linear')
-    omni_df['CARR_LON'] = coord_df['CARR_LON'].copy()
-    omni_df['CARR_LON_RAD'] = coord_df['CARR_LON']/180*3.1415926
+    coord_df = coord_df.reindex(omni_df.index).interpolate(method='linear')
+    omni_df['CARR_LON'] = coord_df['CARR_LON'].copy()*np.nan
+    omni_df['INERT_LON'] = coord_df['INERT_LON'].copy()
+    omni_df.loc[coord_df.index, 'CARR_LON'] = get_coordinates.calculate_carrington_longitude_from_lon(coord_df.index, coord_df['INERT_LON'])
+    omni_df['CARR_LON_RAD'] = omni_df['CARR_LON']/180*3.1415926
     omni_df['LAT'] = coord_df['LAT'].copy()
+   
     omni_df['INERT_LON'] = coord_df['INERT_LON'].copy()
     omni_df['R'] = coord_df['R'].copy()
 
@@ -69,7 +76,7 @@ def reduce_omni(timeframe, cadence):
     return omni_df
 
 
-def plot_omni(omni_df):
+def plot(omni_df):
     
     import matplotlib.pyplot as plt
     import seaborn as sns
@@ -158,13 +165,14 @@ def plot_omni(omni_df):
     plt.tight_layout(pad=1., w_pad=0.5, h_pad=.1)
 
 
-def load_omni(month):
+def load(month):
         
     from CIRESA import filefinder
     import pandas as pd
 
     root_dir = 'C:/Users/14milosi/CIRESA/reduced_data/omni'
 
+    
     files = filefinder.find_parquet_files(root_dir, month)
 
     # Ensure 'files' is always a list, even if a single file path is returned
@@ -181,7 +189,7 @@ def load_omni(month):
 
     return pd.concat(spacecraft)
 
-def delete_omni(month):
+def delete(month):
     
     from CIRESA import filefinder
     import os
@@ -207,7 +215,7 @@ def delete_omni(month):
             print(f"Error deleting {file_path}: {e}")
 
 
-def download_reduce_save_space_omni(month, cadence):
+def download_reduce_save_space(month, cadence):
 
     from CIRESA import omni, filefinder
     import os
@@ -220,16 +228,22 @@ def download_reduce_save_space_omni(month, cadence):
     for m in month:
 
         if os.path.exists('reduced_data\omni\omni_data'+m+'.parquet'):
-            omni_df = omni.load_omni(m)
+            omni_df = omni.load(m)
 
         else:
             timeframe = filefinder.get_month_dates(m)
 
-            omni.download_omni(timeframe)
-            omni_df = omni.reduce_omni(timeframe, cadence)
+            omni.download(timeframe)
+            omni_df = omni.reduce(timeframe, cadence)
             omni_df.to_parquet('reduced_data\omni\omni_data'+m+'.parquet')
 
-        omni.plot_omni(omni_df)
-        plt.savefig('omni_data/monthly_plots/omni'+m+'.png')
-        omni.delete_omni(m)
-
+        try:
+            # Plot and save the figure
+            omni.plot(omni_df)
+            plt.savefig(f'omni_data/monthly_plots/omni_{m}.png')
+            plt.close()  # Close the plot to free up memory
+        except Exception as e:
+            print(f"Error plotting data for {m}: {e}")
+        finally:
+            # Ensure omni.delete() is called regardless of success or failure
+            omni.delete(m)

@@ -32,19 +32,25 @@ def find_files_in_timeframe(root_dir, start_date_str, end_date_str):
     
     return matching_files
 
-def find_parquet_files(root_dir, month):
+def find_parquet_files(root_dir, months):
     import os
+    matched_files = []
+
+    if isinstance(months, str):
+        months = [months]
+    
     # Iterate through the directory structure
     for root, dirs, files in os.walk(root_dir):
         # Iterate over each file in the current directory
         for file in files:
-            # Check if the file is a Parquet file and matches the month string
-            if file.endswith('.parquet') and month in file:
-                # Return the full path to the matching file
-                return os.path.join(root, file)
+            # Check if the file is a Parquet file and matches any month string in the list
+            if file.endswith('.parquet') and any(month in file for month in months):
+                # Append the full path to the matching file
+                matched_files.append(os.path.join(root, file))
     
-    # Return None if no matching file is found
-    return None
+    # Return the list of matching files (empty if none found)
+    return matched_files
+
 
 
 def get_month_dates(month_str):
