@@ -84,7 +84,8 @@ def plot_CIR_carrington(spacecraft, rlim = 1.2, axes=None):
             plt.show()
 
 
-def plot_n_days(df, directory='NDAYPlots', n=10, movie=False, plot_cadence=24, CIR=False):
+def plot_n_days(df, directory='NDAYPlots', persistance=10, rlim = 1.2
+                , movie=False, plot_cadence=24, CIR=False):
     matplotlib.use('Agg')  # Use a non-GUI backend for plotting
     if not os.path.exists(directory):
         os.makedirs(directory)
@@ -94,20 +95,20 @@ def plot_n_days(df, directory='NDAYPlots', n=10, movie=False, plot_cadence=24, C
 
     num_steps = int(total_hours // plot_cadence)  # Number of steps based on the specified hour interval
 
-    for i in range(num_steps - (n * 24) // plot_cadence + 1):  # Ensure not to exceed the range
-        print(f'Plot {i} out of {num_steps - (n * 24) // plot_cadence + 1}')
+    for i in range(num_steps - (persistance * 24) // plot_cadence + 1):  # Ensure not to exceed the range
+        print(f'Plot {i} out of {num_steps - (persistance * 24) // plot_cadence + 1}')
 
         lower_index = df.index[0] + pd.Timedelta(hours=i * plot_cadence)
-        upper_index = lower_index + pd.Timedelta(days=n)  # Plot for 'n' days
+        upper_index = lower_index + pd.Timedelta(days=persistance)  # Plot for 'n' days
 
         # Slice the DataFrame between lower and upper indices while keeping duplicates
         df_slice = df[(df.index >= lower_index) & (df.index <= upper_index)]
 
         # Plotting function (assuming it takes a DataFrame slice)
         if CIR:
-            plot_CIR_carrington(df_slice)
+            plot_CIR_carrington(df_slice, rlim=rlim)
         else:
-            plot_spacecraft_carrington(df_slice)
+            plot_spacecraft_carrington(df_slice, rlim=rlim)
 
         # Save the plot
         filename = os.path.join(directory, f'plot_{i:04d}.png')
@@ -161,7 +162,8 @@ def progressive_model_movie(df_list, directory='Modelmovie'
                             , back_prop = False
                             , movie=False
                             , rlim = 1.2
-                            , COR = 0):
+                            , COR = 0
+                            , res_factor = 2):
     
     """
     Generates progressive plots for spacecraft data over time, 
@@ -214,7 +216,10 @@ def progressive_model_movie(df_list, directory='Modelmovie'
 
         for df in df_list:
             if upper_index in df['CARR_LON_RAD'].index:
-                last_values.append(df['CARR_LON_RAD'].loc[upper_index].iloc[0])
+                if isinstance(df['CARR_LON_RAD'].loc[upper_index], pd.Series):
+                    last_values.append(df['CARR_LON_RAD'].loc[upper_index].iloc[0])
+                else:
+                    last_values.append(df['CARR_LON_RAD'].loc[upper_index])
             else:
                 last_values.append(np.nan)
         value_df_pairs = list(zip(last_values, df_list))
@@ -238,12 +243,13 @@ def progressive_model_movie(df_list, directory='Modelmovie'
             if not df_slice.empty:
                 # Apply the chosen propagation model
                 if model == 'inelastic':
-                    sim = suppress_output(propagation.inelastic_radial, df_slice, sim_cadence, COR=COR)
+                    #sim = suppress_output(propagation.inelastic_radial, df_slice, sim_cadence, COR=COR)
+                    sim = propagation.inelastic_radial_high_res(df_slice, sim_cadence, COR=COR, res_factor=res_factor)
                 elif model == 'ballistic':
                     sim = suppress_output(propagation.ballistic, df_slice, sim_cadence)
                 else:
-                    print('Unsupported model:', model)
-                    return False
+                    #print('Unsupported model:', model)
+                    sim  = df*np.nan
                 if back_prop:
                     sim_back = suppress_output(propagation.ballistic_reverse, df_slice, sim_cadence)
                     sim = pd.concat([sim_back, sim])
@@ -264,6 +270,7 @@ def progressive_model_movie(df_list, directory='Modelmovie'
         stereo_a_inert = suppress_output(get_horizons_coord, 'STEREO-A', upper_index)
         solo_inert = suppress_output(get_horizons_coord, 'Solar Orbiter', upper_index)
         psp_inert = suppress_output(get_horizons_coord, 'PSP', upper_index)
+        maven_inert = suppress_output(get_horizons_coord, 'MAVEN', upper_index)
 
         if HEE:
             plot_df['CARR_LON_RAD'] = plot_df['CARR_LON_RAD'] - carr/180*np.pi# + Earth_inert.heliocentricHEE.lon.value/180*np.pi
@@ -280,13 +287,15 @@ def progressive_model_movie(df_list, directory='Modelmovie'
             sns.scatterplot(x= [(psp_inert.lon.value - Earth_inert.lon.value)/180*np.pi], y = [psp_inert.radius.value], ax = axes, s=100, color='red', linewidth=0, legend=False)
             sns.scatterplot(x= [(solo_inert.lon.value - Earth_inert.lon.value)/180*np.pi], y = [solo_inert.radius.value], ax = axes, s=100, color='yellow', linewidth=0, legend=False)
             sns.scatterplot(x= [(stereo_a_inert.lon.value - Earth_inert.lon.value)/180*np.pi], y = [stereo_a_inert.radius.value], ax = axes, s=100, color='black', linewidth=0, legend=False)
+            sns.scatterplot(x= [(maven_inert.lon.value - Earth_inert.lon.value)/180*np.pi], y = [maven_inert.radius.value], ax = axes, s=100, color='darkred', linewidth=0, legend=False)
         
         else:
             sns.scatterplot(x= carr/180*np.pi, y = [1], ax = axes, s=50, color='blue', linewidth=0, legend=False)
             sns.scatterplot(x= (psp_inert.lon.value - Earth_inert.lon.value - carr)/180*np.pi, y = [psp_inert.radius.value], ax = axes, s=50, color='red', linewidth=0, legend=False)
             sns.scatterplot(x= (solo_inert.lon.value - Earth_inert.lon.value - carr)/180*np.pi, y = [solo_inert.radius.value], ax = axes, s=50, color='yellow', linewidth=0, legend=False)
             sns.scatterplot(x= (stereo_a_inert.lon.value - Earth_inert.lon.value - carr)/180*np.pi, y = [stereo_a_inert.radius.value], ax = axes, s=50, color='black', linewidth=0, legend=False)
-                   
+            sns.scatterplot(x= (maven_inert.lon.value - Earth_inert.lon.value - carr)/180*np.pi, y = [maven_inert.radius.value], ax = axes, s=50, color='darkred', linewidth=0, legend=False)
+                  
 
         au = propagation.cut_from_sim(analyze_df)
         # Add a second set of normal (Cartesian) axes below the polar plot
@@ -317,6 +326,7 @@ def progressive_model_movie(df_list, directory='Modelmovie'
             ax_timeseries.vlines(x = psp_inert.lon.value - Earth_inert.lon.value - carr, ymin=300, ymax=800, color='red', label='PSP')
             ax_timeseries.vlines(x = solo_inert.lon.value - Earth_inert.lon.value - carr, ymin=300, ymax=800, color='yellow', label='SolO')
             ax_timeseries.vlines(x = stereo_a_inert.lon.value - Earth_inert.lon.value - carr, ymin=300, ymax=800, color='black', label='STEREO-A')
+            ax_timeseries.vlines(x = maven_inert.lon.value - Earth_inert.lon.value - carr, ymin=300, ymax=800, color='darkred', label='MAVEN')
             ax_timeseries.set_xlabel('CARR_LON')
             
         else: 
@@ -326,6 +336,7 @@ def progressive_model_movie(df_list, directory='Modelmovie'
             ax_timeseries.vlines(x = psp_inert.lon.value - Earth_inert.lon.value, ymin=300, ymax=800, color='red', label='PSP')
             ax_timeseries.vlines(x = solo_inert.lon.value - Earth_inert.lon.value, ymin=300, ymax=800, color='yellow', label='SolO')
             ax_timeseries.vlines(x = stereo_a_inert.lon.value - Earth_inert.lon.value, ymin=300, ymax=800, color='black', label='STEREO_A')
+            ax_timeseries.vlines(x = maven_inert.lon.value - Earth_inert.lon.value, ymin=300, ymax=800, color='darkred', label='MAVEN')
             
         ax_timeseries.set_ylim(300,800)
         ax_timeseries.set_title('1 AU')

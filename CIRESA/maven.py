@@ -68,9 +68,9 @@ def fetch_files_from_directory(url, date_str, save_dir):
 def download(timeframe):
     
     print('DOWNLOADING MAVEN DATA')
-    mag_url = 'https://spdf.gsfc.nasa.gov/pub/data/maven/mag/l2/sunstate-1sec/cdfs/'
-    swia_url = 'https://spdf.gsfc.nasa.gov/pub/data/maven/swia/l2/onboardsvymom/'
-
+    maven_url = 'https://spdf.gsfc.nasa.gov/pub/data/maven/maven/l2/sunstate-1sec/cdfs/'
+    maven_url = 'https://spdf.gsfc.nasa.gov/pub/data/maven/maven/l2/onboardsvymom/'
+    insitu_url = 'https://spdf.gsfc.nasa.gov/pub/data/maven/insitu/kp-4sec/cdfs/'
     
     # Convert string dates to datetime objects
     start_date = datetime.strptime(timeframe[0], '%Y-%m-%d')
@@ -86,9 +86,9 @@ def download(timeframe):
         current_date += timedelta(days=1)
     
     for date in date_list:
-        fetch_files_from_directory(mag_url, date, save_dir='maven_data/mag/')
-        fetch_files_from_directory(swia_url, date, save_dir='maven_data/swia/')
-
+        #fetch_files_from_directory(maven_url, date, save_dir='maven_data/maven/')
+        #fetch_files_from_directory(maven_url, date, save_dir='maven_data/maven/')
+        fetch_files_from_directory(insitu_url, date, save_dir='maven_data/maven/')
 
 def reduce(timeframe, cadence = '0.1H'):
 
@@ -100,86 +100,198 @@ def reduce(timeframe, cadence = '0.1H'):
 
     root_dir = 'maven_data/'
     
-    dir_mag = root_dir + 'mag/'
-    dir_swia = root_dir + 'swia/'
+    #dir_maven = root_dir + 'maven/'
+    #dir_maven = root_dir + 'maven/'
+    dir_maven = root_dir + 'maven/'
 
-    mag_files = filefinder.find_files_in_timeframe(dir_mag, timeframe[0], timeframe[1])
-    swia_files = filefinder.find_files_in_timeframe(dir_swia, timeframe[0], timeframe[1])
-    print('mag files:', mag_files)
-    print('### EXTRACTING MAGNETIC FIELD DATA ###')
-
-    mag_df = read_cdf_to_df.read_cdf_files_to_dataframe(mag_files, ['epoch', 'OB_B', 'POSN'])
+    #maven_files = filefinder.find_files_in_timeframe(dir_maven, timeframe[0], timeframe[1])
+    #maven_files = filefinder.find_files_in_timeframe(dir_maven, timeframe[0], timeframe[1])
+    maven_files = filefinder.find_files_in_timeframe(dir_maven, timeframe[0], timeframe[1])
+    print('maven files:', maven_files)
+    print('### EXTRACTING mavenNETIC FIELD DATA ###')
     
-    mag_df['Time']= pd.to_datetime(Time(mag_df['epoch'], format='cdf_tt2000', scale='utc').iso)    
-    mag_df['B_R'] = mag_df['OB_B'].apply(lambda lst: lst[0])
-    mag_df['B_T'] = mag_df['OB_B'].apply(lambda lst: lst[1])
-    mag_df['B_N'] = mag_df['OB_B'].apply(lambda lst: lst[2])
-    mag_df['B'] = np.sqrt(mag_df['B_R']**2 + mag_df['B_T']**2 + mag_df['B_N']**2)
-    mag_df['X'] = mag_df['POSN'].apply(lambda lst: lst[0])
-    mag_df['Y'] = mag_df['POSN'].apply(lambda lst: lst[1])
-    mag_df['Z'] = mag_df['POSN'].apply(lambda lst: lst[2])
-    mag_df.drop(columns=['POSN', 'OB_B'], axis=1, inplace=True)
-    mag_df.set_index('Time', inplace=True)
-    mag_df = mag_df.resample(rule=cadence).median()
+    if len(maven_files) > 0:
+        maven_df = read_cdf_to_df.read_cdf_files_to_dataframe(maven_files
+                                                              , ['epoch', 'MAG_field_MSO'
+                                                                 , 'SPICE_spacecraft_MSO'
+                                                                 , 'SWIA_Hplus_density'
+                                                                 , 'SWIA_Hplus_flow_velocity_MSO'
+                                                                 , 'SWIA_Hplus_temperature'
+                                                                 , 'SWIA_dynamic_pressure'
+                                                                 , 'NGIMS_CO2_density'
+                                                                 , 'SWIA_Hplus_flow_velocity_MSO_data_quality'])
+        
+        maven_df['Time']= pd.to_datetime(Time(maven_df['epoch'], format='cdf_tt2000', scale='utc').iso)    
+        maven_df['B_R'] = maven_df['MAG_field_MSO'].apply(lambda lst: lst[0])
+        maven_df['B_T'] = maven_df['MAG_field_MSO'].apply(lambda lst: lst[1])
+        maven_df['B_N'] = maven_df['MAG_field_MSO'].apply(lambda lst: lst[2])
+        maven_df['B'] = np.sqrt(maven_df['B_R']**2 + maven_df['B_T']**2 + maven_df['B_N']**2)
+        maven_df['X'] = maven_df['SPICE_spacecraft_MSO'].apply(lambda lst: lst[0])
+        maven_df['Y'] = maven_df['SPICE_spacecraft_MSO'].apply(lambda lst: lst[1])
+        maven_df['Z'] = maven_df['SPICE_spacecraft_MSO'].apply(lambda lst: lst[2])
+
+        maven_df['V_R'] = -maven_df['SWIA_Hplus_flow_velocity_MSO'].apply(lambda lst: lst[0])
+        maven_df['V_T'] = -maven_df['SWIA_Hplus_flow_velocity_MSO'].apply(lambda lst: lst[1])
+        maven_df['V_N'] = -maven_df['SWIA_Hplus_flow_velocity_MSO'].apply(lambda lst: lst[2])
+        maven_df['T'] = maven_df['SWIA_Hplus_temperature']*11604.5
+        maven_df['V'] = np.sqrt(maven_df['V_R']**2 + maven_df['V_T']**2 + maven_df['V_N']**2)
+        #maven_df['P'] = maven_df['pressure']
+        maven_df['N'] = maven_df['SWIA_Hplus_density']
+        maven_df['CO2'] = maven_df['NGIMS_CO2_density']
+        maven_df['quality'] = maven_df['SWIA_Hplus_flow_velocity_MSO_data_quality'].apply(lambda lst: lst[0])
+        #print(maven_df['quality'])
+        maven_df = maven_df[ maven_df['quality'] > 0.5 ]
+        
+        maven_df['Time']= pd.to_datetime(Time(maven_df['epoch'], format='cdf_epoch', scale='utc').iso)
+        maven_df.set_index('Time', inplace=True)
+        #print(maven_df)
+
+        maven_df.drop(columns=['epoch', 'MAG_field_MSO'
+                            , 'SWIA_Hplus_density'
+                            , 'SWIA_Hplus_flow_velocity_MSO'
+                            , 'SWIA_Hplus_temperature'
+                            , 'SWIA_dynamic_pressure'
+                            , 'NGIMS_CO2_density'
+                            , 'SWIA_Hplus_flow_velocity_MSO_data_quality'
+                            , 'SPICE_spacecraft_MSO']
+                            , axis=1,  inplace=True)
+        #print(maven_df)
+        maven_df = maven_df.resample(cadence).median()
 
 
-    print('### EXTRACTING SWIA DATA ###')
+        # GET COORDINATES
+        coord_df = maven_df.resample(rule='6H').median()
+        carr_lons, maven_r, maven_lats, maven_lon = get_coordinates.get_coordinates(coord_df, 'MAVEN')
+        coord_df['CARR_LON'] = np.asarray(carr_lons) % 360
+        coord_df['LAT'] = maven_lats
 
-    swia_df = read_cdf_to_df.read_cdf_files_to_dataframe(swia_files, ['epoch', 'velocity_mso', 'density',
-                                                                      'telem_mode', 'pressure', 'temperature_mso'])
-    swia_df['V_R'] = -swia_df['velocity_mso'].apply(lambda lst: lst[0])
-    swia_df['V_T'] = -swia_df['velocity_mso'].apply(lambda lst: lst[1])
-    swia_df['V_N'] = -swia_df['velocity_mso'].apply(lambda lst: lst[2])
-    swia_df['T'] = np.sqrt(swia_df['temperature_mso'].apply(lambda lst: lst[0])**2 
-                           + swia_df['temperature_mso'].apply(lambda lst: lst[1])**2 
-                           + swia_df['temperature_mso'].apply(lambda lst: lst[1]))*11604.5
-    swia_df['V'] = np.sqrt(swia_df['V_R']**2 + swia_df['V_T']**2 + swia_df['V_N']**2)
-    #swia_df['P'] = swia_df['pressure']
-    swia_df['N'] = swia_df['density']
-    swia_df['Time']= pd.to_datetime(Time(swia_df['epoch'], format='cdf_tt2000', scale='utc').iso)
-    swia_df.set_index('Time', inplace=True)
+        maven_lon = np.asarray(maven_lon)
+        if (maven_lon < -175).any() & (maven_lon > 175).any():
+            maven_lon[maven_lon < 0] += 360
 
-    swia_df.drop(columns=['epoch', 'velocity_mso', 'density',
-                          'pressure', 'temperature_mso'], axis=1,  inplace=True)
+        coord_df['INERT_LON'] = maven_lon
+        coord_df['R'] = maven_r
 
-    swia_df = swia_df.resample(cadence).median()
-
-
-    # GET COORDINATES
-    coord_df = swia_df.resample(rule='6H').median()
-    carr_lons, maven_r, maven_lats, maven_lon = get_coordinates.get_coordinates(coord_df, 'MAVEN')
-    coord_df['CARR_LON'] = np.asarray(carr_lons) % 360
-    coord_df['LAT'] = maven_lats
-
-    maven_lon = np.asarray(maven_lon)
-    if (maven_lon < -175).any() & (maven_lon > 175).any():
-        maven_lon[maven_lon < 0] += 360
-
-    coord_df['INERT_LON'] = maven_lon
-    coord_df['R'] = maven_r
-
-    coord_df = coord_df.reindex(swia_df.index).interpolate(method='linear')
-    swia_df['CARR_LON'] = coord_df['CARR_LON'].copy()*np.nan
-    swia_df.loc[coord_df.index, 'CARR_LON'] = get_coordinates.calculate_carrington_longitude_from_lon(coord_df.index, coord_df['INERT_LON'])
-    swia_df['CARR_LON_RAD'] = swia_df['CARR_LON']/180*3.1415926
-    swia_df['LAT'] = coord_df['LAT'].copy()
-   
-    swia_df['INERT_LON'] = coord_df['INERT_LON'].copy()
-    swia_df['R'] = coord_df['R'].copy()
-
-    maven_df = pd.concat([swia_df, mag_df], axis=1)
-
-    #Calculate further plasma parameters
-    maven_df['P_t'] = (maven_df['N'] * maven_df['V']**2) / 10**19 / 1.6727   * 10**6 *10**9 # J/cm^3 to nPa
-    maven_df['P_B'] = maven_df['B']**2 / 2. / 1.25663706212*10**(-6) / 10**9    * 10**6 *10**9 #nT to T # J/cm^3 to nPa
-    maven_df['P'] = maven_df['P_t'] + maven_df['P_B']
-    maven_df['Beta'] = maven_df['P_t'] / maven_df['P_B']
-    maven_df['POL'] = np.sign(maven_df['B_R'] - maven_df['B_T']*maven_df['R']*2.7*10**(-6)/maven_df['V'])
-    maven_df['S_P'] = maven_df['T']/maven_df['N']**(2./3.)/11604.5
-
-    maven_df = maven_df[maven_df['telem_mode']< 0.5]
+        coord_df = coord_df.reindex(maven_df.index).interpolate(method='linear')
+        maven_df['CARR_LON'] = coord_df['CARR_LON'].copy()*np.nan
+        maven_df.loc[coord_df.index, 'CARR_LON'] = get_coordinates.calculate_carrington_longitude_from_lon(coord_df.index, coord_df['INERT_LON'])
+        maven_df['CARR_LON_RAD'] = maven_df['CARR_LON']/180*3.1415926
+        maven_df['LAT'] = coord_df['LAT'].copy()
     
+        maven_df['INERT_LON'] = coord_df['INERT_LON'].copy()
+        maven_df['R'] = coord_df['R'].copy()
+        
+
+        #Calculate further plasma parameters
+        maven_df['P_t'] = (maven_df['N'] * maven_df['V']**2) / 10**19 / 1.6727   * 10**6 *10**9 # J/cm^3 to nPa
+        maven_df['P_B'] = maven_df['B']**2 / 2. / 1.25663706212*10**(-6) / 10**9    * 10**6 *10**9 #nT to T # J/cm^3 to nPa
+        maven_df['P'] = maven_df['P_t'] + maven_df['P_B']
+        maven_df['Beta'] = maven_df['P_t'] / maven_df['P_B']
+        maven_df['S_P'] = maven_df['T']/maven_df['N']**(2./3.)/11604.5
+        maven_df['POL'] = np.sign(maven_df['B_R'] - maven_df['B_T']*maven_df['R']*2.7*10**(-6)/maven_df['V'])
+        #maven_df = maven_df[maven_df['telem_mode']< 0.5]
+    
+    else:
+        print('### NO MVAEN FILES ###')
+        index = pd.to_datetime([timeframe[0]])
+        maven_df = pd.DataFrame(index=index,
+                            columns=['V_R', 'V_T', 'V_N'
+                                     , 'V', 'T', 'R', 'N'])
+        
     return maven_df
+    
+    # print('maven files:', maven_files)
+    # print('### EXTRACTING mavenNETIC FIELD DATA ###')
+    
+    # if len(maven_files) > 0:
+    #     maven_df = read_cdf_to_df.read_cdf_files_to_dataframe(maven_files, ['epoch', 'MAG_field_MSO', 'SPICE_spacecraft_MSO'])
+        
+    #     maven_df['Time']= pd.to_datetime(Time(maven_df['epoch'], format='cdf_tt2000', scale='utc').iso)    
+    #     maven_df['B_R'] = maven_df['MAG_field_MSO'].apply(lambda lst: lst[0])
+    #     maven_df['B_T'] = maven_df['MAG_field_MSO'].apply(lambda lst: lst[1])
+    #     maven_df['B_N'] = maven_df['MAG_field_MSO'].apply(lambda lst: lst[2])
+    #     maven_df['B'] = np.sqrt(maven_df['B_R']**2 + maven_df['B_T']**2 + maven_df['B_N']**2)
+    #     maven_df['X'] = maven_df['SPICE_spacecraft_MSO'].apply(lambda lst: lst[0])
+    #     maven_df['Y'] = maven_df['SPICE_spacecraft_MSO'].apply(lambda lst: lst[1])
+    #     maven_df['Z'] = maven_df['SPICE_spacecraft_MSO'].apply(lambda lst: lst[2])
+    #     maven_df.drop(columns=['SPICE_spacecraft_MSO', 'MAG_field_MSO'], axis=1, inplace=True)
+    #     maven_df.set_index('Time', inplace=True)
+    #     maven_df = maven_df.resample(rule=cadence).median()
+
+    # else:
+    #     print('### NO maven FILES ###')
+    #     index = pd.to_datetime([timeframe[0]])
+    #     maven_df = pd.DataFrame(index=index,
+    #                         columns=['B_R', 'B_T', 'B_N', 'B'])
+
+    # print('### EXTRACTING maven DATA ###')
+
+    # if len(maven_files) > 0:
+    #     maven_df = read_cdf_to_df.read_cdf_files_to_dataframe(maven_files, ['epoch', 'SWIA_Hplus_flow_velocity_MSO', 'density',
+    #                                                                     'telem_mode', 'pressure', 'temperature_mso'])
+    #     maven_df['V_R'] = -maven_df['SWIA_Hplus_flow_velocity_MSO'].apply(lambda lst: lst[0])
+    #     maven_df['V_T'] = -maven_df['SWIA_Hplus_flow_velocity_MSO'].apply(lambda lst: lst[1])
+    #     maven_df['V_N'] = -maven_df['SWIA_Hplus_flow_velocity_MSO'].apply(lambda lst: lst[2])
+    #     maven_df['T'] = np.sqrt(maven_df['temperature_mso'].apply(lambda lst: lst[0])**2 
+    #                         + maven_df['temperature_mso'].apply(lambda lst: lst[1])**2 
+    #                         + maven_df['temperature_mso'].apply(lambda lst: lst[1]))*11604.5
+    #     maven_df['V'] = np.sqrt(maven_df['V_R']**2 + maven_df['V_T']**2 + maven_df['V_N']**2)
+    #     #maven_df['P'] = maven_df['pressure']
+    #     maven_df['N'] = maven_df['density']
+    #     maven_df['Time']= pd.to_datetime(Time(maven_df['epoch'], format='cdf_tt2000', scale='utc').iso)
+    #     maven_df.set_index('Time', inplace=True)
+
+    #     maven_df.drop(columns=['epoch', 'SWIA_Hplus_flow_velocity_MSO', 'density',
+    #                         'pressure', 'temperature_mso'], axis=1,  inplace=True)
+
+    #     maven_df = maven_df.resample(cadence).median()
+
+
+    #     # GET COORDINATES
+    #     coord_df = maven_df.resample(rule='6H').median()
+    #     carr_lons, maven_r, maven_lats, maven_lon = get_coordinates.get_coordinates(coord_df, 'MAVEN')
+    #     coord_df['CARR_LON'] = np.asarray(carr_lons) % 360
+    #     coord_df['LAT'] = maven_lats
+
+    #     maven_lon = np.asarray(maven_lon)
+    #     if (maven_lon < -175).any() & (maven_lon > 175).any():
+    #         maven_lon[maven_lon < 0] += 360
+
+    #     coord_df['INERT_LON'] = maven_lon
+    #     coord_df['R'] = maven_r
+
+    #     coord_df = coord_df.reindex(maven_df.index).interpolate(method='linear')
+    #     maven_df['CARR_LON'] = coord_df['CARR_LON'].copy()*np.nan
+    #     maven_df.loc[coord_df.index, 'CARR_LON'] = get_coordinates.calculate_carrington_longitude_from_lon(coord_df.index, coord_df['INERT_LON'])
+    #     maven_df['CARR_LON_RAD'] = maven_df['CARR_LON']/180*3.1415926
+    #     maven_df['LAT'] = coord_df['LAT'].copy()
+    
+    #     maven_df['INERT_LON'] = coord_df['INERT_LON'].copy()
+    #     maven_df['R'] = coord_df['R'].copy()
+        
+    # else:
+    #     print('### NO SPI FILES ###')
+    #     index = pd.to_datetime([timeframe[0]])
+    #     maven_df = pd.DataFrame(index=index,
+    #                         columns=['V_R', 'V_T', 'V_N'
+    #                                  , 'V', 'T', 'R', 'N'])
+    
+
+    # maven_df = pd.concat([maven_df, maven_df], axis=1)
+
+    # #Calculate further plasma parameters
+    # maven_df['P_t'] = (maven_df['N'] * maven_df['V']**2) / 10**19 / 1.6727   * 10**6 *10**9 # J/cm^3 to nPa
+    # maven_df['P_B'] = maven_df['B']**2 / 2. / 1.25663706212*10**(-6) / 10**9    * 10**6 *10**9 #nT to T # J/cm^3 to nPa
+    # maven_df['P'] = maven_df['P_t'] + maven_df['P_B']
+    # maven_df['Beta'] = maven_df['P_t'] / maven_df['P_B']
+    # maven_df['S_P'] = maven_df['T']/maven_df['N']**(2./3.)/11604.5
+
+    # if len(maven_files) > 0:
+    #     maven_df['POL'] = np.sign(maven_df['B_R'] - maven_df['B_T']*maven_df['R']*2.7*10**(-6)/maven_df['V'])
+    # if len(maven_files) > 0:
+    #     maven_df = maven_df[maven_df['telem_mode']< 0.5]
+    
+    # return maven_df
 
 def plot(maven_df):
     

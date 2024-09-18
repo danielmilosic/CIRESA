@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 
-def inelastic_radial(spacecraft, cadence, COR=0):
+def inelastic_radial(spacecraft, degree_resolution=0.5, COR=0):
     """
     Generate a new NumPy array with a simulated propagation of the spacecraft data
     with momentum conservation, no energy conservation. Only radial velocity taken into account
@@ -42,7 +42,11 @@ def inelastic_radial(spacecraft, cadence, COR=0):
     
     #import numba
     #@numba.jit(nopython=True, parallel = True)
+    degperhour = ((spacecraft.loc[spacecraft.index[0], 'CARR_LON'] -spacecraft.loc[spacecraft.index[-1], 'CARR_LON'])
+                  /(spacecraft.index[-1]-spacecraft.index[0]).total_seconds()*3600)
 
+    cadence = str(round(degree_resolution / degperhour, ndigits=1))+'H'
+  
     spacecraft = spacecraft.resample(rule=cadence).median()
     L = pd.Timedelta(cadence).total_seconds() * 600 / 1.5e8 /10 # CHARACTERISTIC DISTANCE /10
 
@@ -110,7 +114,7 @@ def inelastic_radial(spacecraft, cadence, COR=0):
                 delta_R = abs(sim[j, 2] - sim[:j, 2]) # IN AU
                 delta_L = abs(sim[j, 3] - sim[:j, 3]) # IN RAD
 
-                mask = (delta_R < L) & (delta_L * sim[j, 2] < L)  # Adjust the conditions as needed
+                mask = (delta_R < L) & (delta_L  < degree_resolution/180*np.pi/1.5 )  # Adjust the conditions as needed
                 
                 if np.any(mask):
                     
@@ -141,7 +145,9 @@ def inelastic_radial(spacecraft, cadence, COR=0):
         'N': sim[:, 0],
         'ITERATION': sim[:, 4]
     }, index=spacecraft.index[0] + sim[:, 4] * pd.Timedelta(cadence))
-
+    
+    output_data = output_data.resample('1H').median()
+    
     return output_data
 
 import pandas as pd
@@ -427,7 +433,7 @@ def cut_from_sim(sim, spacecraft=None):
     
     return result
 
-def inelastic_radial_high_res(spacecraft, cadence, COR=0, res_factor=2):
+def inelastic_radial_high_res(spacecraft, cadence='1H', COR=0, res_factor=2):
     """
     Generate a new NumPy array with a simulated propagation of the spacecraft data
     with momentum conservation, no energy conservation. Only radial velocity taken into account

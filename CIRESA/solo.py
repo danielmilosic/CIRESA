@@ -31,99 +31,121 @@ def reduce(timeframe, cadence):
     #MAG
 
     print('### EXTRACTING MAGNETIC FIELD DATA ###')
+    if len(mag_files) > 0:
+        if sum(os.path.getsize(f) for f in mag_files) > 3e8:
+    
+            print('### LARGE MAGNETIC FIELD FILES ###')
+            mag_df = []
 
-    if sum(os.path.getsize(f) for f in mag_files) > 3e8:
- 
-        print('### LARGE MAGNETIC FIELD FILES ###')
-        mag_df = []
+            for f in mag_files:
+                    
+                    print(os.path.getsize(f)/1000000, 'MB', f)
+                    mag_loop_df = read_cdf_to_df.read_cdf_files_to_dataframe([f], ['Epoch', 'B_RTN'])
+                    mag_loop_df['Time']= pd.to_datetime(Time(mag_loop_df['Epoch'], format='cdf_tt2000', scale='utc').iso)
+                    mag_loop_df['B_R'] = mag_loop_df['B_RTN'].apply(lambda lst: lst[0])
+                    mag_loop_df['B_T'] = mag_loop_df['B_RTN'].apply(lambda lst: lst[1])
+                    mag_loop_df['B_N'] = mag_loop_df['B_RTN'].apply(lambda lst: lst[2])
+                    
+                    mag_loop_df.drop('B_RTN', axis=1, inplace=True)
+                    mag_loop_df.set_index('Time', inplace=True)              
+                    mag_loop_df = mag_loop_df.resample(rule=cadence).median()
+                    mag_loop_df['B'] = np.sqrt(mag_loop_df['B_R']**2 + mag_loop_df['B_T']**2 + mag_loop_df['B_N']**2)
+                    
+                    mag_df.append(mag_loop_df)
 
-        for f in mag_files:
-                
-                print(os.path.getsize(f)/1000000, 'MB', f)
-                mag_loop_df = read_cdf_to_df.read_cdf_files_to_dataframe([f], ['Epoch', 'B_RTN'])
-                mag_loop_df['Time']= pd.to_datetime(Time(mag_loop_df['Epoch'], format='cdf_tt2000', scale='utc').iso)
-                mag_loop_df['B_R'] = mag_loop_df['B_RTN'].apply(lambda lst: lst[0])
-                mag_loop_df['B_T'] = mag_loop_df['B_RTN'].apply(lambda lst: lst[1])
-                mag_loop_df['B_N'] = mag_loop_df['B_RTN'].apply(lambda lst: lst[2])
-                
-                mag_loop_df.drop('B_RTN', axis=1, inplace=True)
-                mag_loop_df.set_index('Time', inplace=True)              
-                mag_loop_df = mag_loop_df.resample(rule=cadence).median()
-                mag_loop_df['B'] = np.sqrt(mag_loop_df['B_R']**2 + mag_loop_df['B_T']**2 + mag_loop_df['B_N']**2)
-                
-                mag_df.append(mag_loop_df)
+            mag_df = pd.concat(mag_df, axis=0)
 
-        mag_df = pd.concat(mag_df, axis=0)
+        else:
 
-    else:
-
-        mag_df = read_cdf_to_df.read_cdf_files_to_dataframe(mag_files, ['Epoch', 'B_RTN'])
-        mag_df['Time']= pd.to_datetime(Time(mag_df['Epoch'], format='cdf_tt2000', scale='utc').iso)
-        mag_df['B_R'] = mag_df['B_RTN'].apply(lambda lst: lst[0])
-        mag_df['B_T'] = mag_df['B_RTN'].apply(lambda lst: lst[1])
-        mag_df['B_N'] = mag_df['B_RTN'].apply(lambda lst: lst[2])
-        mag_df['B'] = np.sqrt(mag_df['B_R']**2 + mag_df['B_T']**2 + mag_df['B_N']**2)
+            mag_df = read_cdf_to_df.read_cdf_files_to_dataframe(mag_files, ['Epoch', 'B_RTN'])
+            mag_df['Time']= pd.to_datetime(Time(mag_df['Epoch'], format='cdf_tt2000', scale='utc').iso)
+            mag_df['B_R'] = mag_df['B_RTN'].apply(lambda lst: lst[0])
+            mag_df['B_T'] = mag_df['B_RTN'].apply(lambda lst: lst[1])
+            mag_df['B_N'] = mag_df['B_RTN'].apply(lambda lst: lst[2])
+            mag_df['B'] = np.sqrt(mag_df['B_R']**2 + mag_df['B_T']**2 + mag_df['B_N']**2)
+            
+            mag_df.drop('B_RTN', axis=1, inplace=True)
+            mag_df.set_index('Time', inplace=True)
+            mag_df = mag_df.resample(rule=cadence).median()
+    
+    else:  
+            print('### NO MAGNETIC FIELDS FILES ###')
+            index = pd.to_datetime([timeframe[0]])
+            mag_df = pd.DataFrame(index=index,
+                                columns=['B_R', 'B_T', 'B_N', 'B'])
         
-        mag_df.drop('B_RTN', axis=1, inplace=True)
-        mag_df.set_index('Time', inplace=True)
-        mag_df = mag_df.resample(rule=cadence).median()
-
     #SWA
     print('### EXTRACTING SWA DATA ###')
+    if len(swa_files) > 0:
 
-    swa_df = read_cdf_to_df.read_cdf_files_to_dataframe(swa_files, ['Epoch', 'V_RTN', 'N', 'P_RTN', 'T'])
+        swa_df = read_cdf_to_df.read_cdf_files_to_dataframe(swa_files, ['Epoch', 'V_RTN', 'N', 'P_RTN', 'T'])
 
-    swa_df['V_R'] = swa_df['V_RTN'].apply(lambda lst: lst[0])
-    swa_df['V_T'] = swa_df['V_RTN'].apply(lambda lst: lst[1])
-    swa_df['V_N'] = swa_df['V_RTN'].apply(lambda lst: lst[2])
-    swa_df['P_R'] = swa_df['P_RTN'].apply(lambda lst: lst[0])
-    swa_df['P_T'] = swa_df['P_RTN'].apply(lambda lst: lst[1])
-    swa_df['P_N'] = swa_df['P_RTN'].apply(lambda lst: lst[2])
-    swa_df['T'] = swa_df['T']*11604.5
-    swa_df['V'] = np.sqrt(swa_df['V_R']**2 + swa_df['V_T']**2 + swa_df['V_N']**2)
-    swa_df['P'] = np.sqrt(swa_df['P_R']**2 + swa_df['P_T']**2 + swa_df['P_N']**2)
-    swa_df['Time']= pd.to_datetime(Time(swa_df['Epoch'], format='cdf_tt2000', scale='utc').iso)
+        swa_df['V_R'] = swa_df['V_RTN'].apply(lambda lst: lst[0])
+        swa_df['V_T'] = swa_df['V_RTN'].apply(lambda lst: lst[1])
+        swa_df['V_N'] = swa_df['V_RTN'].apply(lambda lst: lst[2])
+        swa_df['P_R'] = swa_df['P_RTN'].apply(lambda lst: lst[0])
+        swa_df['P_T'] = swa_df['P_RTN'].apply(lambda lst: lst[1])
+        swa_df['P_N'] = swa_df['P_RTN'].apply(lambda lst: lst[2])
+        swa_df['T'] = swa_df['T']*11604.5
+        swa_df['V'] = np.sqrt(swa_df['V_R']**2 + swa_df['V_T']**2 + swa_df['V_N']**2)
+        swa_df['P'] = np.sqrt(swa_df['P_R']**2 + swa_df['P_T']**2 + swa_df['P_N']**2)
+        swa_df['Time']= pd.to_datetime(Time(swa_df['Epoch'], format='cdf_tt2000', scale='utc').iso)
 
-    swa_df.drop(columns='V_RTN', inplace=True)
-    swa_df.drop(columns='P_RTN', inplace=True)
-    swa_df.drop(columns='Epoch', inplace=True)
+        swa_df.drop(columns='V_RTN', inplace=True)
+        swa_df.drop(columns='P_RTN', inplace=True)
+        swa_df.drop(columns='Epoch', inplace=True)
 
-    swa_df.set_index('Time', inplace=True)
-    swa_df_nod = swa_df[~swa_df.index.duplicated(keep='first')]
-    swa_df = swa_df_nod.resample(cadence).median()
+        swa_df.set_index('Time', inplace=True)
+        swa_df_nod = swa_df[~swa_df.index.duplicated(keep='first')]
+        swa_df = swa_df_nod.resample(cadence).median()
 
-    # GET COORDINATES
-    coord_df = swa_df.resample(rule='6H').median()
-    carr_lons, solo_r, solo_lats, solo_lon = get_coordinates.get_coordinates(coord_df, 'Solar Orbiter')
-    coord_df['CARR_LON'] = np.asarray(carr_lons) % 360
-    coord_df['LAT'] = solo_lats
-    solo_lon = np.asarray(solo_lon)
-    if (solo_lon < -175).any() & (solo_lon > 175).any():
-        solo_lon[solo_lon < 0] += 360
+        # GET COORDINATES
+        coord_df = swa_df.resample(rule='6H').median()
+        carr_lons, solo_r, solo_lats, solo_lon = get_coordinates.get_coordinates(coord_df, 'Solar Orbiter')
+        coord_df['CARR_LON'] = np.asarray(carr_lons) % 360
+        coord_df['LAT'] = solo_lats
+        solo_lon = np.asarray(solo_lon)
+        if (solo_lon < -175).any() & (solo_lon > 175).any():
+            solo_lon[solo_lon < 0] += 360
 
-    coord_df['INERT_LON'] = solo_lon
-    coord_df['R'] = solo_r
+        coord_df['INERT_LON'] = solo_lon
+        coord_df['R'] = solo_r
 
-    coord_df = coord_df.reindex(swa_df.index).interpolate(method='linear')
-    swa_df['CARR_LON'] = coord_df['CARR_LON'].copy()*np.nan
-    swa_df.loc[coord_df.index, 'CARR_LON'] = get_coordinates.calculate_carrington_longitude_from_lon(coord_df.index, coord_df['INERT_LON'])
-    swa_df['CARR_LON_RAD'] = swa_df['CARR_LON']/180*3.1415926
-    swa_df['LAT'] = coord_df['LAT'].copy()
-   
-    swa_df['INERT_LON'] = coord_df['INERT_LON'].copy()
-    swa_df['R'] = coord_df['R'].copy()
+        coord_df = coord_df.reindex(swa_df.index).interpolate(method='linear')
+        swa_df['CARR_LON'] = coord_df['CARR_LON'].copy()*np.nan
+        swa_df.loc[coord_df.index, 'CARR_LON'] = get_coordinates.calculate_carrington_longitude_from_lon(coord_df.index, coord_df['INERT_LON'])
+        swa_df['CARR_LON_RAD'] = swa_df['CARR_LON']/180*3.1415926
+        swa_df['LAT'] = coord_df['LAT'].copy()
+    
+        swa_df['INERT_LON'] = coord_df['INERT_LON'].copy()
+        swa_df['R'] = coord_df['R'].copy()
+
+    else:
+        print('### NO SWA FILES ###')
+        index = pd.to_datetime([timeframe[0]])
+        swa_df = pd.DataFrame(index=index,
+                            columns=['V_R', 'V_T', 'V_N', 'V', 'T', 'R'])
+
 
     #HIS
     print('### EXTRACTING HIS DATA ###')
+    if len(his_files) > 0:
+        his_df = read_cdf_to_df.read_cdf_files_to_dataframe(his_files, ['EPOCH', 'O7_O6_RATIO', 'C6_C5_RATIO'])
+        his_df['Time']= pd.to_datetime(Time(his_df['EPOCH'], format='cdf_tt2000', scale='utc').iso)
 
-    his_df = read_cdf_to_df.read_cdf_files_to_dataframe(his_files, ['EPOCH', 'O7_O6_RATIO', 'C6_C5_RATIO'])
-    his_df['Time']= pd.to_datetime(Time(his_df['EPOCH'], format='cdf_tt2000', scale='utc').iso)
-
-    his_df = his_df[his_df['O7_O6_RATIO'] > 0.]
-    his_df.set_index('Time', inplace=True)
-    his_df.drop(columns='EPOCH', inplace=True)
-    his_df_nod = his_df[~his_df.index.duplicated(keep='first')]
-    his_df = his_df_nod.resample(cadence).median()
+        his_df = his_df[his_df['O7_O6_RATIO'] > 0.]
+        his_df.set_index('Time', inplace=True)
+        his_df.drop(columns='EPOCH', inplace=True)
+        his_df_nod = his_df[~his_df.index.duplicated(keep='first')]
+        his_df = his_df_nod.resample(cadence).median()
+    else:
+        print('### NO HIS FILES ###')
+        index = pd.to_datetime([timeframe[0]])
+        his_df = pd.DataFrame(index=index, columns=['O7_O6_RATIO'])
+        
+    his_df = his_df[~his_df.index.duplicated()]
+    swa_df = swa_df[~swa_df.index.duplicated()]
+    mag_df = mag_df[~mag_df.index.duplicated()]
 
     solo_df = pd.concat([his_df, swa_df, mag_df], axis=1)
 
