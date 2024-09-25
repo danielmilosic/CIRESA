@@ -47,8 +47,9 @@ def plot_spacecraft_carrington(spacecraft, rlim = 1.2, axes = None):
 
 def plot_CIR_carrington(spacecraft, rlim = 1.2, axes=None):
     #matplotlib.use('Agg')
-    spacecraft['CARR_LON_RAD'] = spacecraft['CARR_LON']/180*3.14159
-
+    if 'CARR_LON_RAD' not in spacecraft:
+        spacecraft['CARR_LON_RAD'] = spacecraft['CARR_LON']/180*3.14159
+    
     if axes is None:
         fig, axes = plt.subplots(nrows=1, ncols=1, figsize=(10, 10), sharex=True, subplot_kw={'projection': 'polar'})
 
@@ -155,7 +156,7 @@ from sunpy.coordinates import get_horizons_coord
 
 
 def progressive_model_movie(df_list, directory='Modelmovie'
-                            , persistance=10, plot_cadence=24, sim_cadence = '0.5H'
+                            , persistance=10, plot_cadence=24, sim_resolution = 0.5
                             , model='ballistic'
                             , CIR=False
                             , HEE = False
@@ -163,7 +164,7 @@ def progressive_model_movie(df_list, directory='Modelmovie'
                             , movie=False
                             , rlim = 1.2
                             , COR = 0
-                            , res_factor = 2):
+                            ):
     
     """
     Generates progressive plots for spacecraft data over time, 
@@ -243,15 +244,16 @@ def progressive_model_movie(df_list, directory='Modelmovie'
             if not df_slice.empty:
                 # Apply the chosen propagation model
                 if model == 'inelastic':
+                    #print('MODELRUN')
                     #sim = suppress_output(propagation.inelastic_radial, df_slice, sim_cadence, COR=COR)
-                    sim = propagation.inelastic_radial_high_res(df_slice, sim_cadence, COR=COR, res_factor=res_factor)
+                    sim = propagation.inelastic_radial(df_slice, degree_resolution = sim_resolution, COR=COR)
                 elif model == 'ballistic':
-                    sim = suppress_output(propagation.ballistic, df_slice, sim_cadence)
+                    sim = suppress_output(propagation.ballistic, df_slice)
                 else:
                     #print('Unsupported model:', model)
                     sim  = df*np.nan
                 if back_prop:
-                    sim_back = suppress_output(propagation.ballistic_reverse, df_slice, sim_cadence)
+                    sim_back = suppress_output(propagation.ballistic_reverse, df_slice)
                     sim = pd.concat([sim_back, sim])
                 
                 sim_df.append(sim)
@@ -260,7 +262,7 @@ def progressive_model_movie(df_list, directory='Modelmovie'
         # Concatenate the in-situ data and simulation results for plotting
         plot_df = pd.concat([insitu_df_slice] + sim_df)
         analyze_df = pd.concat([insitu_df_slice] + sim_df)
-
+        
         fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 14), subplot_kw={'projection': 'polar'})
         ax.remove()
         axes = fig.add_axes([0.1, 0.22, 0.8, 0.8], projection='polar')

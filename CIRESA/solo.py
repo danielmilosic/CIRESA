@@ -151,12 +151,13 @@ def reduce(timeframe, cadence):
 
 
     #Calculate further plasma parameters
-    solo_df['P_t'] = (solo_df['N'] * solo_df['V']**2) / 10**19 / 1.6727   * 10**6 *10**9 # J/cm^3 to nPa
-    solo_df['P_B'] = solo_df['B']**2 / 2. / 1.25663706212*10**(-6) / 10**9    * 10**6 *10**9 #nT to T # J/cm^3 to nPa
-    solo_df['P'] = solo_df['P_t'] + solo_df['P_B']
-    solo_df['Beta'] = solo_df['P_t'] / solo_df['P_B']
-    solo_df['POL'] = np.sign(solo_df['B_R'] - solo_df['B_T']*solo_df['R']*2.7*10**(-6)/solo_df['V'])
-    solo_df['S_P'] = solo_df['T']/solo_df['N']**(2./3.)/11604.5
+    if len(swa_files) > 0 & len(mag_files) > 0:
+        solo_df['P_t'] = (solo_df['N'] * solo_df['V']**2) / 10**19 / 1.6727   * 10**6 *10**9 # J/cm^3 to nPa
+        solo_df['P_B'] = solo_df['B']**2 / 2. / 1.25663706212*10**(-6) / 10**9    * 10**6 *10**9 #nT to T # J/cm^3 to nPa
+        solo_df['P'] = solo_df['P_t'] + solo_df['P_B']
+        solo_df['Beta'] = solo_df['P_t'] / solo_df['P_B']
+        solo_df['POL'] = np.sign(solo_df['B_R'] - solo_df['B_T']*solo_df['R']*2.7*10**(-6)/solo_df['V'])
+        solo_df['S_P'] = solo_df['T']/solo_df['N']**(2./3.)/11604.5
 
     return solo_df
 
