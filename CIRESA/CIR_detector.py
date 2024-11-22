@@ -7,7 +7,13 @@ import keyword
 
 def suggest(spacecraft_df, si=None, fw=None, bw=None, te=None):
     ### Prepare suggestions
-    spacecraft_df = spacecraft_df.sort_index()
+    spacecraft_df = spacecraft_df[['V', 'N', 'P', 'CARR_LON', 'S_P']].sort_index()
+
+    mean = spacecraft_df.mean()
+
+    # fill NaN values with the mean of each column
+    spacecraft_df.fillna(mean, inplace=True)
+
     # Find the indices based on max, min values
     max_v_index = spacecraft_df['V'].idxmax()
     max_n_index = spacecraft_df['N'].idxmax()
@@ -28,7 +34,16 @@ def suggest(spacecraft_df, si=None, fw=None, bw=None, te=None):
     # Trailing edge
     HSS = spacecraft_df[max_v_index:]
     notHSS = HSS[HSS['S_P']<4.]
-    trailing_edge_index = notHSS.index[0]
+    #print('notHSS:', notHSS)
+    #trailing_edge_index = notHSS.index[0]
+
+    if len(notHSS)<2:
+        trailing_edge_index = spacecraft_df.index[-1]
+    else: 
+        trailing_edge_index = notHSS.index[0]
+
+    if trailing_edge_index < max_n_index:
+        trailing_edge_index = spacecraft_df.index[-1]
 
     trailing_edge = {
         'time': trailing_edge_index,
@@ -40,12 +55,19 @@ def suggest(spacecraft_df, si=None, fw=None, bw=None, te=None):
         'time': te,
         'carr_lon': spacecraft_df.loc[te, 'CARR_LON']
     }
- 
+    
+
+    #print('TE:', trailing_edge)
+    #print('SI:', stream_interface)
+
     # Back wave   
 
-    perturbed_fast_wind = spacecraft_df[stream_interface['time']:trailing_edge['time']] 
+    perturbed_fast_wind = spacecraft_df[stream_interface['time']:trailing_edge['time']]
+    back_wave_index = perturbed_fast_wind.index[-1] 
     perturbed_fast_wind = perturbed_fast_wind[perturbed_fast_wind['P'] > low_p]
-    back_wave_index = perturbed_fast_wind.index[-1]
+    
+    if len(perturbed_fast_wind)>2:
+        back_wave_index = perturbed_fast_wind.index[-1]
 
     back_wave = {
         'time': back_wave_index,
@@ -58,12 +80,15 @@ def suggest(spacecraft_df, si=None, fw=None, bw=None, te=None):
         'carr_lon': spacecraft_df.loc[bw, 'CARR_LON']
     }
         
-  
+    #print('BW:', back_wave)
     # Front wave
 
     perturbed_slow_wind = spacecraft_df[:stream_interface['time']] 
-    perturbed_slow_wind = perturbed_slow_wind[perturbed_slow_wind['P']> low_p]
     front_wave_index = perturbed_slow_wind.index[0]
+    perturbed_slow_wind = perturbed_slow_wind[perturbed_slow_wind['P']> low_p]
+
+    if len(perturbed_slow_wind)>2:
+        front_wave_index = perturbed_slow_wind.index[0]
 
     front_wave = {
         'time': front_wave_index,
@@ -76,6 +101,7 @@ def suggest(spacecraft_df, si=None, fw=None, bw=None, te=None):
         'carr_lon': spacecraft_df.loc[fw, 'CARR_LON']
     }
 
+    #print('FW:', front_wave)
 
     return stream_interface, front_wave, back_wave, trailing_edge
 
@@ -128,6 +154,9 @@ def plot_and_choose_CIR(spacecraft_df):
 
         # Store the filtered DataFrame
         si, fw, bw, te = suggest(filtered_df)
+
+        print(si, fw, bw, te)
+
         filtered_df_container.clear()
         filtered_df_container.append(spacecraft_df[fw['time'] - pd.Timedelta('1D') : te['time'] + pd.Timedelta('1D')])
 
@@ -330,8 +359,10 @@ def plot_identified_CIR(filtered_df):
 
     plt.show()
 
-def save_to_CIR_data_base(CIR, spacecraft):
+from CIRESA.utils import spacecraft_ID
+def save_to_CIR_data_base(CIR):
 
+    spacecraft = spacecraft_ID(CIR)
     day1 = CIR.index[0].strftime('%Y-%m-%d')
     lastday = CIR.index[-1].strftime('%Y-%m-%d')
     name = spacecraft+day1 + '---' + lastday

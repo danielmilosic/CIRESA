@@ -2,7 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 import os
 from datetime import datetime, timedelta
-
+import numpy as np
 
 def download_file(url, local_filename):
     """Download a file from a URL and save it locally."""
@@ -189,110 +189,51 @@ def reduce(timeframe, cadence = '0.1H'):
         maven_df['Beta'] = maven_df['P_t'] / maven_df['P_B']
         maven_df['S_P'] = maven_df['T']/maven_df['N']**(2./3.)/11604.5
         maven_df['POL'] = np.sign(maven_df['B_R'] - maven_df['B_T']*maven_df['R']*2.7*10**(-6)/maven_df['V'])
-        #maven_df = maven_df[maven_df['telem_mode']< 0.5]
+        
+        maven_df['Spacecraft_ID'] = 7
     
     else:
-        print('### NO MVAEN FILES ###')
+        print('### NO MAVEN FILES ###')
         index = pd.to_datetime([timeframe[0]])
         maven_df = pd.DataFrame(index=index,
                             columns=['V_R', 'V_T', 'V_N'
                                      , 'V', 'T', 'R', 'N'])
         
+        maven_df['Spacecraft_ID'] = 7
+        
     return maven_df
+
+import pandas as pd
+def filter_sw(df, cadence = '6H', interpolate = False):
+
+    df[df['V']<1000]
+    df = df[df['V']>250]
+    df = df[df['N']<150]
+    df = df[df['P']<1000]
+    df = df[df['B']<100]
+    df = df[df['V_T']<500]
+    df = df[df['quality']>0.99]
+
+    maxi = df.resample(cadence).max()
+    mini = df.resample(cadence).min()
+    medi = df.resample(cadence).median()
+
+    resampled_df = maxi
+    resampled_df[['B_R', 'B_T', 'B_N', 'V_T', 'LAT', 'CARR_LON']] = medi[['B_R', 'B_T', 'B_N', 'V_T', 'LAT', 'CARR_LON']]
+
+    resampled_df['P_t'] = (resampled_df['N'] * resampled_df['V']**2) / 10**19 / 1.6727   * 10**6 *10**9 # J/cm^3 to nPa
+    resampled_df['P_B'] = resampled_df['B']**2 / 2. / 1.25663706212*10**(-6) / 10**9    * 10**6 *10**9 #nT to T # J/cm^3 to nPa
+    resampled_df['Beta'] = resampled_df['P_t'] / resampled_df['P_B']
+    resampled_df['S_P'] = resampled_df['T']/resampled_df['N']**(2./3.)/11604.5
+    resampled_df['POL'] = np.sign(resampled_df['B_R'] - resampled_df['B_T']*resampled_df['R']*2.7*10**(-6)/resampled_df['V'])
     
-    # print('maven files:', maven_files)
-    # print('### EXTRACTING mavenNETIC FIELD DATA ###')
-    
-    # if len(maven_files) > 0:
-    #     maven_df = read_cdf_to_df.read_cdf_files_to_dataframe(maven_files, ['epoch', 'MAG_field_MSO', 'SPICE_spacecraft_MSO'])
-        
-    #     maven_df['Time']= pd.to_datetime(Time(maven_df['epoch'], format='cdf_tt2000', scale='utc').iso)    
-    #     maven_df['B_R'] = maven_df['MAG_field_MSO'].apply(lambda lst: lst[0])
-    #     maven_df['B_T'] = maven_df['MAG_field_MSO'].apply(lambda lst: lst[1])
-    #     maven_df['B_N'] = maven_df['MAG_field_MSO'].apply(lambda lst: lst[2])
-    #     maven_df['B'] = np.sqrt(maven_df['B_R']**2 + maven_df['B_T']**2 + maven_df['B_N']**2)
-    #     maven_df['X'] = maven_df['SPICE_spacecraft_MSO'].apply(lambda lst: lst[0])
-    #     maven_df['Y'] = maven_df['SPICE_spacecraft_MSO'].apply(lambda lst: lst[1])
-    #     maven_df['Z'] = maven_df['SPICE_spacecraft_MSO'].apply(lambda lst: lst[2])
-    #     maven_df.drop(columns=['SPICE_spacecraft_MSO', 'MAG_field_MSO'], axis=1, inplace=True)
-    #     maven_df.set_index('Time', inplace=True)
-    #     maven_df = maven_df.resample(rule=cadence).median()
+    if interpolate:
+        new_time_index = pd.date_range(start=df.index.min(), end=df.index.max(), freq='0.1H')
+        resampled_df = resampled_df.reindex(new_time_index)
+        resampled_df = resampled_df.interpolate(method='linear')
+        resampled_df[['LAT', 'CARR_LON', 'INERT_LON', 'CARR_LON_RAD']] = df[['LAT', 'CARR_LON', 'INERT_LON', 'CARR_LON_RAD']]
 
-    # else:
-    #     print('### NO maven FILES ###')
-    #     index = pd.to_datetime([timeframe[0]])
-    #     maven_df = pd.DataFrame(index=index,
-    #                         columns=['B_R', 'B_T', 'B_N', 'B'])
-
-    # print('### EXTRACTING maven DATA ###')
-
-    # if len(maven_files) > 0:
-    #     maven_df = read_cdf_to_df.read_cdf_files_to_dataframe(maven_files, ['epoch', 'SWIA_Hplus_flow_velocity_MSO', 'density',
-    #                                                                     'telem_mode', 'pressure', 'temperature_mso'])
-    #     maven_df['V_R'] = -maven_df['SWIA_Hplus_flow_velocity_MSO'].apply(lambda lst: lst[0])
-    #     maven_df['V_T'] = -maven_df['SWIA_Hplus_flow_velocity_MSO'].apply(lambda lst: lst[1])
-    #     maven_df['V_N'] = -maven_df['SWIA_Hplus_flow_velocity_MSO'].apply(lambda lst: lst[2])
-    #     maven_df['T'] = np.sqrt(maven_df['temperature_mso'].apply(lambda lst: lst[0])**2 
-    #                         + maven_df['temperature_mso'].apply(lambda lst: lst[1])**2 
-    #                         + maven_df['temperature_mso'].apply(lambda lst: lst[1]))*11604.5
-    #     maven_df['V'] = np.sqrt(maven_df['V_R']**2 + maven_df['V_T']**2 + maven_df['V_N']**2)
-    #     #maven_df['P'] = maven_df['pressure']
-    #     maven_df['N'] = maven_df['density']
-    #     maven_df['Time']= pd.to_datetime(Time(maven_df['epoch'], format='cdf_tt2000', scale='utc').iso)
-    #     maven_df.set_index('Time', inplace=True)
-
-    #     maven_df.drop(columns=['epoch', 'SWIA_Hplus_flow_velocity_MSO', 'density',
-    #                         'pressure', 'temperature_mso'], axis=1,  inplace=True)
-
-    #     maven_df = maven_df.resample(cadence).median()
-
-
-    #     # GET COORDINATES
-    #     coord_df = maven_df.resample(rule='6H').median()
-    #     carr_lons, maven_r, maven_lats, maven_lon = get_coordinates.get_coordinates(coord_df, 'MAVEN')
-    #     coord_df['CARR_LON'] = np.asarray(carr_lons) % 360
-    #     coord_df['LAT'] = maven_lats
-
-    #     maven_lon = np.asarray(maven_lon)
-    #     if (maven_lon < -175).any() & (maven_lon > 175).any():
-    #         maven_lon[maven_lon < 0] += 360
-
-    #     coord_df['INERT_LON'] = maven_lon
-    #     coord_df['R'] = maven_r
-
-    #     coord_df = coord_df.reindex(maven_df.index).interpolate(method='linear')
-    #     maven_df['CARR_LON'] = coord_df['CARR_LON'].copy()*np.nan
-    #     maven_df.loc[coord_df.index, 'CARR_LON'] = get_coordinates.calculate_carrington_longitude_from_lon(coord_df.index, coord_df['INERT_LON'])
-    #     maven_df['CARR_LON_RAD'] = maven_df['CARR_LON']/180*3.1415926
-    #     maven_df['LAT'] = coord_df['LAT'].copy()
-    
-    #     maven_df['INERT_LON'] = coord_df['INERT_LON'].copy()
-    #     maven_df['R'] = coord_df['R'].copy()
-        
-    # else:
-    #     print('### NO SPI FILES ###')
-    #     index = pd.to_datetime([timeframe[0]])
-    #     maven_df = pd.DataFrame(index=index,
-    #                         columns=['V_R', 'V_T', 'V_N'
-    #                                  , 'V', 'T', 'R', 'N'])
-    
-
-    # maven_df = pd.concat([maven_df, maven_df], axis=1)
-
-    # #Calculate further plasma parameters
-    # maven_df['P_t'] = (maven_df['N'] * maven_df['V']**2) / 10**19 / 1.6727   * 10**6 *10**9 # J/cm^3 to nPa
-    # maven_df['P_B'] = maven_df['B']**2 / 2. / 1.25663706212*10**(-6) / 10**9    * 10**6 *10**9 #nT to T # J/cm^3 to nPa
-    # maven_df['P'] = maven_df['P_t'] + maven_df['P_B']
-    # maven_df['Beta'] = maven_df['P_t'] / maven_df['P_B']
-    # maven_df['S_P'] = maven_df['T']/maven_df['N']**(2./3.)/11604.5
-
-    # if len(maven_files) > 0:
-    #     maven_df['POL'] = np.sign(maven_df['B_R'] - maven_df['B_T']*maven_df['R']*2.7*10**(-6)/maven_df['V'])
-    # if len(maven_files) > 0:
-    #     maven_df = maven_df[maven_df['telem_mode']< 0.5]
-    
-    # return maven_df
-
+    return resampled_df
 def plot(maven_df):
     
     import matplotlib.pyplot as plt
@@ -333,7 +274,7 @@ def plot(maven_df):
 
     sns.lineplot(data=maven_df, x=maven_df.index, y='S_P', ax=axes[6], color='black')
     axes[6].fill_between(maven_df.index, 2.69, 4, color='grey', alpha=0.7)
-    axes[6].set_ylim([0, 25])
+    axes[6].set_ylim([0, 250])
     axes[6].set_ylabel('$S_p$ $[eV cm^{2}]$')
 
     sns.lineplot(data=maven_df, x=maven_df.index, y='R', ax=axes[7], color='black')
@@ -383,7 +324,7 @@ def plot(maven_df):
 
 
 
-def load(month):
+def load(month='all', reduce_cadence=None, interpolate=False):
         
     from CIRESA import filefinder
     import pandas as pd
@@ -403,6 +344,10 @@ def load(month):
 
         print(f)
         df = pd.read_parquet(f)
+
+        if reduce_cadence is not None:
+            df = filter_sw(df, reduce_cadence, interpolate=interpolate)
+
         spacecraft.append(df)
 
     return pd.concat(spacecraft)

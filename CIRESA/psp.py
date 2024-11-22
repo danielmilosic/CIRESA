@@ -194,6 +194,8 @@ def reduce(timeframe, cadence='0.1H'):
         psp_df['POL'] = np.sign(-1)
     psp_df['S_P'] = psp_df['T']/psp_df['N']**(2./3.)/11604.5
 
+    psp_df['Spacecraft_ID'] = 1
+
     return psp_df
 
 def plot(psp_df):

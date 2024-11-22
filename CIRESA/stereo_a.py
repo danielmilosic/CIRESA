@@ -80,6 +80,7 @@ def reduce(timeframe, cadence):
     stereo_a_df['POL'] = np.sign(stereo_a_df['B_R'] - stereo_a_df['B_T']*stereo_a_df['R']*2.7*10**(-6)/stereo_a_df['V'])
     stereo_a_df['S_P'] = stereo_a_df['T']/stereo_a_df['N']**(2./3.)/11604.5
 
+    stereo_a_df['Spacecraft_ID'] = 4
 
     return stereo_a_df
 
