@@ -39,15 +39,29 @@ def inelastic_radial(spacecraft, degree_resolution=0.5, COR=0):
     """
     ID = spacecraft_ID(spacecraft, ID_number=True)
 
-    degperhour = abs((spacecraft.loc[spacecraft.index[0], 'CARR_LON'] -spacecraft.loc[spacecraft.index[-1], 'CARR_LON'])
-                  /(spacecraft.index[-1]-spacecraft.index[0]).total_seconds()*3600)
-    if spacecraft.loc[spacecraft.index[0], 'CARR_LON'] > spacecraft.loc[spacecraft.index[-1], 'CARR_LON']:
-        degperhour = abs((spacecraft.loc[spacecraft.index[0], 'CARR_LON'] -spacecraft.loc[spacecraft.index[-1], 'CARR_LON']+360)
-                  /(spacecraft.index[-1]-spacecraft.index[0]).total_seconds()*3600)
-        
+    lon_sc = spacecraft.dropna(subset=['CARR_LON'])
+    lon = lon_sc['CARR_LON'].to_numpy()
+    shift_lon = np.roll(lon,1)
+    peaks = abs(lon - shift_lon)
+    peak_indices = np.where(peaks > 300)[0]
+    delta_lon = abs(lon[0] - lon[-1] + 360*len(peak_indices))
+    if delta_lon < 0:
+        delta_lon +=  360
+    degperhour = (delta_lon
+                /(spacecraft.index[-1]-spacecraft.index[0]).total_seconds()*3600)
     cadence = str(round(degree_resolution / degperhour, ndigits=1))+'H'
-    if np.isnan(degperhour): cadence = '2H'
 
+    # Number of minutes in a day
+    minutes_per_day = 1440
+
+    # Compute cadence based on degree resolution and degrees per hour
+    raw_cadence_hours = degree_resolution / degperhour
+    raw_cadence_minutes = raw_cadence_hours * 60  # Convert to minutes
+
+    # Force cadence to be divisible by the number of minutes in a day
+    cadence = str(minutes_per_day // round(minutes_per_day / raw_cadence_minutes))+'min'
+
+    if np.isnan(degperhour): cadence = '2H'
 
     if 'Region' not in spacecraft:
         spacecraft['Region'] = spacecraft['V']*np.nan
@@ -56,8 +70,10 @@ def inelastic_radial(spacecraft, degree_resolution=0.5, COR=0):
 
     spacecraft = spacecraft[['N', 'V', 'R', 'CARR_LON_RAD', 'Region', 'Spacecraft_ID']]
     
+    spacecraft.dropna(subset=['V', 'N'], inplace=True)
     spacecraft = spacecraft.resample(rule=cadence).median()
-    L = pd.Timedelta(cadence).total_seconds() * 600 / 1.5e8 /10 # CHARACTERISTIC DISTANCE /10
+
+    L = pd.Timedelta(cadence).total_seconds() * 600 / 1.5e8 /10  # CHARACTERISTIC DISTANCE /10
 
     hours = pd.Timedelta(cadence).total_seconds() / 3600
 
@@ -117,15 +133,29 @@ def ballistic(spacecraft, degree_resolution=0.5, COR=0):
 
     ID = spacecraft_ID(spacecraft, ID_number=True)
 
-    degperhour = abs((spacecraft.loc[spacecraft.index[0], 'CARR_LON'] -spacecraft.loc[spacecraft.index[-1], 'CARR_LON'])
-                  /(spacecraft.index[-1]-spacecraft.index[0]).total_seconds()*3600)
-    if spacecraft.loc[spacecraft.index[0], 'CARR_LON'] > spacecraft.loc[spacecraft.index[-1], 'CARR_LON']:
-        degperhour = abs((spacecraft.loc[spacecraft.index[0], 'CARR_LON'] -spacecraft.loc[spacecraft.index[-1], 'CARR_LON']+360)
-                  /(spacecraft.index[-1]-spacecraft.index[0]).total_seconds()*3600)
-        
+    lon_sc = spacecraft.dropna(subset=['CARR_LON'])
+    lon = lon_sc['CARR_LON'].to_numpy()
+    shift_lon = np.roll(lon,1)
+    peaks = abs(lon - shift_lon)
+    peak_indices = np.where(peaks > 300)[0]
+    delta_lon = abs(lon[0] - lon[-1] + 360*len(peak_indices))
+    if delta_lon < 0:
+        delta_lon +=  360
+    degperhour = (delta_lon
+                /(spacecraft.index[-1]-spacecraft.index[0]).total_seconds()*3600)
     cadence = str(round(degree_resolution / degperhour, ndigits=1))+'H'
-    if np.isnan(degperhour): cadence = '2H'
 
+    # Number of minutes in a day
+    minutes_per_day = 1440
+
+    # Compute cadence based on degree resolution and degrees per hour
+    raw_cadence_hours = degree_resolution / degperhour
+    raw_cadence_minutes = raw_cadence_hours * 60  # Convert to minutes
+
+    # Force cadence to be divisible by the number of minutes in a day
+    cadence = str(minutes_per_day // round(minutes_per_day / raw_cadence_minutes))+'min'
+
+    if np.isnan(degperhour): cadence = '2H'
 
     if 'Region' not in spacecraft:
         spacecraft['Region'] = spacecraft['V']*np.nan
@@ -134,7 +164,10 @@ def ballistic(spacecraft, degree_resolution=0.5, COR=0):
 
     spacecraft = spacecraft[['N', 'V', 'R', 'CARR_LON_RAD', 'Region', 'Spacecraft_ID']]
     
+    spacecraft.dropna(subset=['V', 'N'], inplace=True)
     spacecraft = spacecraft.resample(rule=cadence).median()
+
+
     L = pd.Timedelta(cadence).total_seconds() * 600 / 1.5e8 /10 # CHARACTERISTIC DISTANCE /10
 
     hours = pd.Timedelta(cadence).total_seconds() / 3600
@@ -192,15 +225,29 @@ def ballistic_reverse(spacecraft, degree_resolution=0.5, COR=0):
     """
     ID = spacecraft_ID(spacecraft, ID_number=True)
 
-    degperhour = abs((spacecraft.loc[spacecraft.index[0], 'CARR_LON'] -spacecraft.loc[spacecraft.index[-1], 'CARR_LON'])
-                  /(spacecraft.index[-1]-spacecraft.index[0]).total_seconds()*3600)
-    if spacecraft.loc[spacecraft.index[0], 'CARR_LON'] > spacecraft.loc[spacecraft.index[-1], 'CARR_LON']:
-        degperhour = abs((spacecraft.loc[spacecraft.index[0], 'CARR_LON'] -spacecraft.loc[spacecraft.index[-1], 'CARR_LON']+360)
-                  /(spacecraft.index[-1]-spacecraft.index[0]).total_seconds()*3600)
-        
+    lon_sc = spacecraft.dropna(subset=['CARR_LON'])
+    lon = lon_sc['CARR_LON'].to_numpy()
+    shift_lon = np.roll(lon,1)
+    peaks = abs(lon - shift_lon)
+    peak_indices = np.where(peaks > 300)[0]
+    delta_lon = lon[0] - lon[-1] + 360*len(peak_indices)
+    if delta_lon < 0:
+         delta_lon +=  360
+    degperhour = (delta_lon
+                /(spacecraft.index[-1]-spacecraft.index[0]).total_seconds()*3600)
     cadence = str(round(degree_resolution / degperhour, ndigits=1))+'H'
-    if np.isnan(degperhour): cadence = '2H'
 
+    # Number of minutes in a day
+    minutes_per_day = 1440
+
+    # Compute cadence based on degree resolution and degrees per hour
+    raw_cadence_hours = degree_resolution / degperhour
+    raw_cadence_minutes = raw_cadence_hours * 60  # Convert to minutes
+
+    # Force cadence to be divisible by the number of minutes in a day
+    cadence = str(minutes_per_day // round(minutes_per_day / raw_cadence_minutes))+'min'
+
+    if np.isnan(degperhour): cadence = '2H'
 
     if 'Region' not in spacecraft:
         spacecraft['Region'] = spacecraft['V']*np.nan
@@ -209,7 +256,10 @@ def ballistic_reverse(spacecraft, degree_resolution=0.5, COR=0):
 
     spacecraft = spacecraft[['N', 'V', 'R', 'CARR_LON_RAD', 'Region', 'Spacecraft_ID']]
     
+    spacecraft.dropna(subset=['V', 'N'], inplace=True)
     spacecraft = spacecraft.resample(rule=cadence).median()
+
+
     L = pd.Timedelta(cadence).total_seconds() * 600 / 1.5e8 /10 # CHARACTERISTIC DISTANCE /10
 
     hours = pd.Timedelta(cadence).total_seconds() / 3600
@@ -327,14 +377,17 @@ def radial_prop( input_data, L, hours, COR, degree_resolution, type = 'inelastic
                                             - sim[j, 1]*np.sum(sim[0 : j][mask, 0])*(COR)) /
                                             (sim[j, 0] + np.sum(sim[0 : j][mask, 0])))
 
+
                         # p_b = u_b * m_b (VECTOR)
                         past = sim[0 : j][mask, 1] * sim[0 : j][mask, 0]
+
 
                         # v_b = p_b + (1+COR)p_a - u_b(VECTOR)*m_a*COR / m_a + m_b(VECTOR)
                         sim[0 : j][mask, 1] = ((past 
                                                     + sim[j, 1] * sim[j, 0]*(COR+1.)
                                                     - sim[0 : j][mask, 1] * sim[j, 0] * COR) /
                                                                 (sim[j, 0] + sim[0 : j][mask, 0]))
+
 
     deg = (sim[:,3] * 180/ np.pi) % 360
     sim[:,3] = deg * np.pi/180

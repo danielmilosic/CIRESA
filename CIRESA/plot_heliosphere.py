@@ -133,15 +133,14 @@ def make_movie(directory, framerate=10):
     ffmpeg_cmd = [
         "ffmpeg",
         "-framerate", framerate,                # Frames per second
-        "-i", os.path.join(directory, 'plot_%4d.png'), # Input image filenames (plot_0.png, plot_1.png, etc.)
+        "-i", os.path.join(directory, 'plot_%4d.png'), # Input image filenames
         "-c:v", "libx264",                # Video codec (H.264)
         "-pix_fmt", "yuv420p",            # Pixel format
-        "-vf", "scale=1280:720",          # Output video resolution
         "-r", framerate,                       # Output framerate
         "-y",                             # Overwrite output file if it already exists
         output_video
     ]
-
+    
 
     # Run FFmpeg command
     subprocess.run(ffmpeg_cmd, check=True)
@@ -159,7 +158,7 @@ from CIRESA.utils import spacecraft_ID
 from sunpy.coordinates import get_horizons_coord
 pd.options.mode.chained_assignment = None  # defvirtual_spacecraft_dflt='warn'
 
-def progressive_model_movie(df_list, directory='Modelmovie'
+def Persistance_2D(df_list, directory='Modelmovie'
                             , persistance=10, plot_cadence=24, sim_resolution = 0.5
                             , model='ballistic'
                             , CIR=False
@@ -168,7 +167,8 @@ def progressive_model_movie(df_list, directory='Modelmovie'
                             , movie=False
                             , rlim = 1.2
                             , COR = 0
-                            , virtual_spacecraft = None # defvirtual_spacecraft_dflt is Earth
+                            , virtual_spacecraft = None # def virtual_spacecraft_df is Earth
+                            , save = False
                             ):
     
     """
@@ -206,9 +206,10 @@ def progressive_model_movie(df_list, directory='Modelmovie'
     # Number of steps based on the specified hour interval
     num_steps = int(total_hours // plot_cadence)
 
+    P2D = []
     # Ensure that we're not exceeding the available range
     for i in range(num_steps - (persistance * 24) // plot_cadence + 1):
-        print(f'Plot {i+1} out of {num_steps - (persistance * 24) // plot_cadence + 1}')
+        print(f'Plot {i} out of {num_steps - (persistance * 24) // plot_cadence}')
 
         
 
@@ -270,12 +271,14 @@ def progressive_model_movie(df_list, directory='Modelmovie'
         maven_df = next((df for df, ID in zip(df_list, spacecraft_IDs) if ID == 'MAVEN'), None)
 
     
-        # Concatenate all input DataFrames
-        concat_df = pd.concat(df_list)
+        # Filter each DataFrame in the list to only include rows within the desired time window
+        filtered_df_list = [
+        df[(df.index >= lower_index) & (df.index <= upper_index)]
+        for df in df_list
+        ]
 
-
-        # Slice the in-situ DataFrame for the current time window
-        insitu_df_slice = concat_df[(concat_df.index >= lower_index) & (concat_df.index <= upper_index)]
+        # Concatenate all filtered DataFrames
+        insitu_df_slice = pd.concat(filtered_df_list)
 
         # Initialize a list to store the simulation DataFrames
         sim_df = []
@@ -288,7 +291,6 @@ def progressive_model_movie(df_list, directory='Modelmovie'
                 # Apply the chosen propagation model
                 if model == 'inelastic':
                     #print('MODELRUN')
-                    #sim = suppress_output(propagation.inelastic_radial, df_slice, sim_cadence, COR=COR)
                     sim = propagation.inelastic_radial(df_slice, degree_resolution = sim_resolution, COR=COR)
                 elif model == 'ballistic':
                     sim = suppress_output(propagation.ballistic, df_slice, degree_resolution = sim_resolution)
@@ -317,30 +319,58 @@ def progressive_model_movie(df_list, directory='Modelmovie'
 
         # Call the appropriate plot function (CIR or spacecraft Carrington plot)
         if CIR:
-            plot_CIR_carrington(plot_df, rlim=rlim, axes=axes)
+            plot_CIR_carrington(plot_df, rlim=rlim, axes=axes, s=30*sim_resolution)
         else:
-            plot_spacecraft_carrington(plot_df, rlim=rlim, axes=axes)
+            plot_spacecraft_carrington(plot_df, rlim=rlim, axes=axes, s=30*sim_resolution)
         
         if HEE:
-            sns.scatterplot(x= [0], y = [1], ax = axes, s=100, color='blue', linewidth=0, legend=False)
-            sns.scatterplot(x= [(psp_inert.lon.value - Earth_inert.lon.value)/180*np.pi], y = [psp_inert.radius.value], ax = axes, s=100, color='red', linewidth=0, legend=False)
-            sns.scatterplot(x= [(solo_inert.lon.value - Earth_inert.lon.value)/180*np.pi], y = [solo_inert.radius.value], ax = axes, s=100, color='yellow', linewidth=0, legend=False)
-            sns.scatterplot(x= [(stereo_a_inert.lon.value - Earth_inert.lon.value)/180*np.pi], y = [stereo_a_inert.radius.value], ax = axes, s=100, color='black', linewidth=0, legend=False)
-            sns.scatterplot(x= [(maven_inert.lon.value - Earth_inert.lon.value)/180*np.pi], y = [maven_inert.radius.value], ax = axes, s=100, color='darkred', linewidth=0, legend=False)
-        
+            if 'Spacecraft_ID' in plot_df.columns:
+                if (plot_df['Spacecraft_ID']==6).any() > 0:
+                    sns.scatterplot(x= [0], y = [1], ax = axes, s=100, color='blue', linewidth=0, legend=False)
+                    sns.scatterplot(x= [(psp_inert.lon.value - Earth_inert.lon.value)/180*np.pi], y = [psp_inert.radius.value], ax = axes, s=100, color='red', linewidth=0, legend=False)
+                    sns.scatterplot(x= [(solo_inert.lon.value - Earth_inert.lon.value)/180*np.pi], y = [solo_inert.radius.value], ax = axes, s=100, color='yellow', linewidth=0, legend=False)
+                    sns.scatterplot(x= [(stereo_a_inert.lon.value - Earth_inert.lon.value)/180*np.pi], y = [stereo_a_inert.radius.value], ax = axes, s=100, color='black', linewidth=0, legend=False)
+                    sns.scatterplot(x= [(maven_inert.lon.value - Earth_inert.lon.value)/180*np.pi], y = [maven_inert.radius.value], ax = axes, s=100, color='darkred', linewidth=0, legend=False)
+                
+            else:
+                sns.scatterplot(x= [0], y = [1], ax = axes, s=100, color='blue', linewidth=0, legend=False)
+                sns.scatterplot(x= [(psp_inert.lon.value - Earth_inert.lon.value)/180*np.pi], y = [psp_inert.radius.value], ax = axes, s=100, color='red', linewidth=0, legend=False)
+                sns.scatterplot(x= [(solo_inert.lon.value - Earth_inert.lon.value)/180*np.pi], y = [solo_inert.radius.value], ax = axes, s=100, color='yellow', linewidth=0, legend=False)
+                sns.scatterplot(x= [(stereo_a_inert.lon.value - Earth_inert.lon.value)/180*np.pi], y = [stereo_a_inert.radius.value], ax = axes, s=100, color='black', linewidth=0, legend=False)
+                sns.scatterplot(x= [(maven_inert.lon.value - Earth_inert.lon.value)/180*np.pi], y = [maven_inert.radius.value], ax = axes, s=100, color='darkred', linewidth=0, legend=False)
+            
         else:
-            sns.scatterplot(x= carr/180*np.pi, y = [1], ax = axes, s=50, color='blue', linewidth=0, legend=False)
-            sns.scatterplot(x= (psp_inert.lon.value - Earth_inert.lon.value + carr)/180*np.pi, y = [psp_inert.radius.value], ax = axes, s=50, color='red', linewidth=0, legend=False)
-            sns.scatterplot(x= (solo_inert.lon.value - Earth_inert.lon.value + carr)/180*np.pi, y = [solo_inert.radius.value], ax = axes, s=50, color='yellow', linewidth=0, legend=False)
-            sns.scatterplot(x= (stereo_a_inert.lon.value - Earth_inert.lon.value + carr)/180*np.pi, y = [stereo_a_inert.radius.value], ax = axes, s=50, color='black', linewidth=0, legend=False)
-            sns.scatterplot(x= (maven_inert.lon.value - Earth_inert.lon.value + carr)/180*np.pi, y = [maven_inert.radius.value], ax = axes, s=50, color='darkred', linewidth=0, legend=False)
+            if 'Spacecraft_ID' in plot_df.columns:
+                sns.scatterplot(x= carr/180*np.pi, y = [1], ax = axes, s=50, color='blue', linewidth=0, legend=False)
+                sns.scatterplot(x= (psp_inert.lon.value - Earth_inert.lon.value + carr)/180*np.pi, y = [psp_inert.radius.value], ax = axes, s=50, color='red', linewidth=0, legend=False)
+                sns.scatterplot(x= (solo_inert.lon.value - Earth_inert.lon.value + carr)/180*np.pi, y = [solo_inert.radius.value], ax = axes, s=50, color='yellow', linewidth=0, legend=False)
+                sns.scatterplot(x= (stereo_a_inert.lon.value - Earth_inert.lon.value + carr)/180*np.pi, y = [stereo_a_inert.radius.value], ax = axes, s=50, color='black', linewidth=0, legend=False)
+                sns.scatterplot(x= (maven_inert.lon.value - Earth_inert.lon.value + carr)/180*np.pi, y = [maven_inert.radius.value], ax = axes, s=50, color='darkred', linewidth=0, legend=False)
+            
+            else:
+                sns.scatterplot(x= carr/180*np.pi, y = [1], ax = axes, s=50, color='blue', linewidth=0, legend=False)
+                sns.scatterplot(x= (psp_inert.lon.value - Earth_inert.lon.value + carr)/180*np.pi, y = [psp_inert.radius.value], ax = axes, s=50, color='red', linewidth=0, legend=False)
+                sns.scatterplot(x= (solo_inert.lon.value - Earth_inert.lon.value + carr)/180*np.pi, y = [solo_inert.radius.value], ax = axes, s=50, color='yellow', linewidth=0, legend=False)
+                sns.scatterplot(x= (stereo_a_inert.lon.value - Earth_inert.lon.value + carr)/180*np.pi, y = [stereo_a_inert.radius.value], ax = axes, s=50, color='black', linewidth=0, legend=False)
+                sns.scatterplot(x= (maven_inert.lon.value - Earth_inert.lon.value + carr)/180*np.pi, y = [maven_inert.radius.value], ax = axes, s=50, color='darkred', linewidth=0, legend=False)
 
         virtual_spacecraft_df = [] 
+
         for df in analyze_df:
 
-            df = propagation.cut_from_sim(df, virtual_spacecraft)
+            # Check if virtual_spacecraft is a string and filter the DataFrame
+            if isinstance(virtual_spacecraft, str):
+                for df_virtual in analyze_df:
+                    if 'Spacecraft_ID' in df_virtual.columns:  # Ensure the column exists to avoid errors
+                        if spacecraft_ID(df_virtual['Spacecraft_ID']) == virtual_spacecraft :
+                            df = propagation.cut_from_sim(df, df_virtual)
+
+            else:
+                df = propagation.cut_from_sim(df, virtual_spacecraft)
+            
+            # Append the processed DataFrame to the list
             virtual_spacecraft_df.append(df)
-        
+
         virtual_spacecraft_df = pd.concat(virtual_spacecraft_df)
         virtual_spacecraft_df['CARR_LON'] = (virtual_spacecraft_df['CARR_LON_RAD'] * 180/np.pi)%360
         # Add a second set of normal (Cartesian) axes below the polar plot
@@ -372,7 +402,7 @@ def progressive_model_movie(df_list, directory='Modelmovie'
                     1: 'red',
                 }     
             sns.scatterplot(data=virtual_spacecraft_df, x='CARR_LON', y = 'V', ax = ax_timeseries, s=5, hue = virtual_spacecraft_df['Spacecraft_ID'], palette=custom_palette, linewidth=0, legend=False)
-       
+
         if not HEE:
             ax_timeseries.set_xlim(360,0)
             ax_timeseries.vlines(x = carr, ymin=300, ymax=800, color='blue', label='Earth')
@@ -407,6 +437,11 @@ def progressive_model_movie(df_list, directory='Modelmovie'
         plt.savefig(filename, format='png')
         plt.close()  # Close the plot to free memory
 
+        if save:
+            P2D.append(virtual_spacecraft_df)
     # If movie flag is set, generate a movie from the saved plots
     if movie:
         make_movie(directory)
+
+    if save:
+        return P2D

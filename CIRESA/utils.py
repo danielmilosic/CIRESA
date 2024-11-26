@@ -62,3 +62,47 @@ def spacecraft_ID(ID, ID_number=False):
         return number
     else:
         return df.loc[number, 'ID']
+
+import os
+from PIL import Image
+
+
+def glue_together(folder_a, folder_b, output_folder):
+
+    # Create output folder if it doesn't exist
+    os.makedirs(output_folder, exist_ok=True)
+
+    # Get sorted lists of file names from both folders
+    files_a = sorted(f for f in os.listdir(folder_a) if f.endswith(".png"))
+    files_b = sorted(f for f in os.listdir(folder_b) if f.endswith(".png"))
+
+    # Ensure both folders have the same number of files
+    if len(files_a) != len(files_b):
+        print("Warning: The number of files in folder A and folder B do not match!")
+
+    # Process files
+    for file_a, file_b in zip(files_a, files_b):
+        # Open images from both folders
+        img_a = Image.open(os.path.join(folder_a, file_a))
+        img_b = Image.open(os.path.join(folder_b, file_b))
+        
+        # Ensure the images have the same height by resizing (optional, remove if not needed)
+        if img_a.height != img_b.height:
+            img_b = img_b.resize((img_b.width, img_a.height), Image.ANTIALIAS)
+        
+        # Create a new image with the combined width and same height
+        combined_width = img_a.width + img_b.width
+        combined_image = Image.new("RGB", (combined_width, img_a.height))
+        
+        # Paste the images side by side
+        combined_image.paste(img_a, (0, 0))
+        combined_image.paste(img_b, (img_a.width, 0))
+        
+        # Save the combined image in the output folder
+        os.makedirs(output_folder, exist_ok=True)
+        output_path = os.path.join(output_folder, file_a)  # Use file_a name for the output
+        combined_image.save(output_path)
+
+        print(f"Saved combined image: {output_path}")
+
+    print("All images have been processed and saved.")
