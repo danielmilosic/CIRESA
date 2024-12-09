@@ -24,6 +24,7 @@ def download(timeframe):
     
     pyspedas.psp.spc(trange=timeframe, downloadonly=True, datatype='l3i')
 
+
 def reduce(timeframe, cadence='0.1H'):
 
 
@@ -97,24 +98,6 @@ def reduce(timeframe, cadence='0.1H'):
 
         fields_df = pd.concat(fields_df, axis=0)
 
-        # else:
-
-        #     fields_df = read_cdf_to_df.read_cdf_files_to_dataframe(fields_files, ['epoch_mag_RTN', 'psp_fld_l2_mag_RTN'])
-
-        #     # Resample and drop unnecessary columns
-        #     fields_df = fields_df.iloc[::10]
-        #     fields_df['Time'] = Time(fields_df['epoch_mag_RTN'], format='cdf_tt2000', scale='utc').to_datetime()
-        #     fields_df.set_index('Time', inplace=True)
-        #     fields_df['B_R'] = fields_df['psp_fld_l2_mag_RTN'].apply(lambda lst: lst[0])
-        #     fields_df['B_T'] = fields_df['psp_fld_l2_mag_RTN'].apply(lambda lst: lst[1])
-        #     fields_df['B_N'] = fields_df['psp_fld_l2_mag_RTN'].apply(lambda lst: lst[2])
-        #     fields_df.drop('psp_fld_l2_mag_RTN', axis=1, inplace=True)
-        #     fields_df.drop('epoch_mag_RTN', axis=1, inplace=True)
-
-        #     fields_df = fields_df.resample(rule=cadence).median(cadence)
-
-        #     fields_df['B'] = np.sqrt(fields_df['B_R']**2 + fields_df['B_T']**2 + fields_df['B_N']**2)
-    
     else:  
         print('### NO MAGNETIC FIELDS FILES ###')
         index = pd.to_datetime([timeframe[0]])
@@ -272,19 +255,6 @@ def plot(psp_df):
     ax3.yaxis.label.set_color('tab:blue')
     ax3.tick_params(axis='y', colors='tab:blue')
 
-
-    # # Customize the x-axis locator and formatter to have one date label for each tick
-    # #locator = AutoDateLocator()
-    # locator = DayLocator()
-    # formatter = DateFormatter("%y-%m-%d %H:%M")
-    # axes[-1].xaxis.set_major_locator(locator)
-    # axes[-1].xaxis.set_major_formatter(formatter)
-    # plt.xticks(rotation=45)
-
-
-    # #axes[0].set_title('PSP')
-    # axes[1].set_title('')
-    # axes[2].set_title('')
 
     plt.tight_layout(pad=1., w_pad=0.5, h_pad=.1)
 

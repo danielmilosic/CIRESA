@@ -263,7 +263,7 @@ def plot(solo_df):
 
 
 
-def load(month):
+def load(month='all'):
         
     from CIRESA import filefinder
     import pandas as pd

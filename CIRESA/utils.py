@@ -6,6 +6,27 @@ from erfa import ErfaWarning
 import pandas as pd
 
 def suppress_output(func, *args, **kwargs):
+    """
+    Executes a given function while suppressing its standard output and specific warnings.
+    
+    Args:
+        func (callable): The function to execute.
+        *args: Positional arguments to pass to the function.
+        **kwargs: Keyword arguments to pass to the function.
+    
+    Returns:
+        The result of the executed function.
+    
+    Behavior:
+        - Redirects `sys.stdout` to `os.devnull` to suppress any printed output.
+        - Suppresses warnings of type `ErfaWarning` and `RuntimeWarning`.
+        - Restores the original `sys.stdout` after execution, ensuring no permanent redirection.
+    
+    Notes:
+        - This function is useful for scenarios where verbose output or warnings 
+          are unnecessary and can clutter the logs or terminal.
+    """
+    
     # Save the original stdout
     original_stdout = sys.stdout
     try:
@@ -63,11 +84,25 @@ def spacecraft_ID(ID, ID_number=False):
     else:
         return df.loc[number, 'ID']
 
-import os
 from PIL import Image
 
 
 def glue_together(folder_a, folder_b, output_folder):
+    """
+    Combines images from two folders by placing them side-by-side and saves the resulting images 
+    in the specified output folder.
+    
+    Args:
+        folder_a (str): Path to the first folder containing images.
+        folder_b (str): Path to the second folder containing images.
+        output_folder (str): Path to the folder where combined images will be saved.
+    
+    Notes:
+        - The function assumes that both folders contain PNG images and aligns the images based on height.
+        - If the number of images in folder_a and folder_b do not match, a warning is displayed.
+        - Images are combined side-by-side. The resulting images are saved using the file names from folder_a.
+        - If the image heights differ, folder_b images are resized to match the height of folder_a images.
+    """
 
     # Create output folder if it doesn't exist
     os.makedirs(output_folder, exist_ok=True)
@@ -106,3 +141,59 @@ def glue_together(folder_a, folder_b, output_folder):
         print(f"Saved combined image: {output_path}")
 
     print("All images have been processed and saved.")
+
+import numpy as np
+import pandas as pd
+
+def pad_data_with_nans(data, before, after, cadence='H'):
+    """
+    Add NaNs to the start and end of the DataFrame to make it have a consistent length,
+    and linearly extrapolate the `CARR_LON` column.
+
+    Parameters:
+    - data (pd.DataFrame): DataFrame to pad and extrapolate.
+    - before (str): Start datetime as a string (e.g., 'YYYY-MM-DD HH:MM').
+    - after (str): End datetime as a string (e.g., 'YYYY-MM-DD HH:MM').
+
+    Returns:
+    - padded_data (pd.DataFrame): Padded DataFrame with extrapolated `CARR_LON`.
+    """
+
+    # Ensure the index is a DateTimeIndex
+    data = data.copy()
+    if not isinstance(data.index, pd.DatetimeIndex):
+        raise ValueError("The DataFrame index must be a DatetimeIndex.")
+
+    # Create padding for before
+    pad_before_index = pd.date_range(start=before, end=data.index.min(), freq=cadence)
+    pad_before = pd.DataFrame(index=pad_before_index, columns=data.columns)
+    pad_before[:] = np.nan
+
+    # Create padding for after
+    pad_after_index = pd.date_range(start=data.index.max(), end=after, freq=cadence)
+    pad_after = pd.DataFrame(index=pad_after_index, columns=data.columns)
+    pad_after[:] = np.nan
+
+    # Concatenate padding and data
+    padded_df = pd.concat([pad_before, data, pad_after])
+
+    # Linearly extrapolate the `CARR_LON` column
+    if 'CARR_LON' in data.columns:
+        carr_lon = data['CARR_LON']
+        slope = (carr_lon.iloc[-1] - carr_lon.iloc[0]) / (carr_lon.index[-1] - carr_lon.index[0]).total_seconds()
+
+        # Extrapolate for padding before
+        for idx in pad_before.index:
+            delta = (idx - carr_lon.index[0]).total_seconds()
+            pad_before.loc[idx, 'CARR_LON'] = carr_lon.iloc[0] + slope * delta
+
+        # Extrapolate for padding after
+        for idx in pad_after.index:
+            delta = (idx - carr_lon.index[-1]).total_seconds()
+            pad_after.loc[idx, 'CARR_LON'] = carr_lon.iloc[-1] + slope * delta
+
+        # Update the padded DataFrame
+        padded_df['CARR_LON'] = pd.concat([pad_before['CARR_LON'], carr_lon, pad_after['CARR_LON']])
+
+    return padded_df
+    

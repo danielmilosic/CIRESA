@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import numba    
-from CIRESA.utils import spacecraft_ID
+from CIRESA.utils import spacecraft_ID, pad_data_with_nans
 
 def inelastic_radial(spacecraft, degree_resolution=0.5, COR=0):
     """
@@ -39,29 +39,18 @@ def inelastic_radial(spacecraft, degree_resolution=0.5, COR=0):
     """
     ID = spacecraft_ID(spacecraft, ID_number=True)
 
-    lon_sc = spacecraft.dropna(subset=['CARR_LON'])
-    lon = lon_sc['CARR_LON'].to_numpy()
-    shift_lon = np.roll(lon,1)
-    peaks = abs(lon - shift_lon)
-    peak_indices = np.where(peaks > 300)[0]
-    delta_lon = abs(lon[0] - lon[-1] + 360*len(peak_indices))
-    if delta_lon < 0:
-        delta_lon +=  360
-    degperhour = (delta_lon
-                /(spacecraft.index[-1]-spacecraft.index[0]).total_seconds()*3600)
-    cadence = str(round(degree_resolution / degperhour, ndigits=1))+'H'
-
-    # Number of minutes in a day
+    # Constants
+    degperhour = 0.55 # Solar rotation
     minutes_per_day = 1440
 
-    # Compute cadence based on degree resolution and degrees per hour
+    # Calculate raw cadence
     raw_cadence_hours = degree_resolution / degperhour
     raw_cadence_minutes = raw_cadence_hours * 60  # Convert to minutes
 
-    # Force cadence to be divisible by the number of minutes in a day
-    cadence = str(minutes_per_day // round(minutes_per_day / raw_cadence_minutes))+'min'
-
-    if np.isnan(degperhour): cadence = '2H'
+    # Calculate the cadence as a divisor of minutes_per_day
+    divisors = [d for d in range(1, minutes_per_day + 1) if minutes_per_day % d == 0]
+    cadence_minutes = min(divisors, key=lambda x: abs(x - raw_cadence_minutes))
+    cadence = f'{cadence_minutes}min'
 
     if 'Region' not in spacecraft:
         spacecraft['Region'] = spacecraft['V']*np.nan
@@ -70,8 +59,10 @@ def inelastic_radial(spacecraft, degree_resolution=0.5, COR=0):
 
     spacecraft = spacecraft[['N', 'V', 'R', 'CARR_LON_RAD', 'Region', 'Spacecraft_ID']]
     
-    spacecraft.dropna(subset=['V', 'N'], inplace=True)
-    spacecraft = spacecraft.resample(rule=cadence).median()
+    spacecraft_filtered = spacecraft.dropna(subset=['V', 'N'])
+    spacecraft = pad_data_with_nans(spacecraft_filtered.resample(rule=cadence).median()
+                                    ,spacecraft.index[0]
+                                    ,spacecraft.index[-1], cadence=cadence)
 
     L = pd.Timedelta(cadence).total_seconds() * 600 / 1.5e8 /10  # CHARACTERISTIC DISTANCE /10
 
@@ -133,29 +124,18 @@ def ballistic(spacecraft, degree_resolution=0.5, COR=0):
 
     ID = spacecraft_ID(spacecraft, ID_number=True)
 
-    lon_sc = spacecraft.dropna(subset=['CARR_LON'])
-    lon = lon_sc['CARR_LON'].to_numpy()
-    shift_lon = np.roll(lon,1)
-    peaks = abs(lon - shift_lon)
-    peak_indices = np.where(peaks > 300)[0]
-    delta_lon = abs(lon[0] - lon[-1] + 360*len(peak_indices))
-    if delta_lon < 0:
-        delta_lon +=  360
-    degperhour = (delta_lon
-                /(spacecraft.index[-1]-spacecraft.index[0]).total_seconds()*3600)
-    cadence = str(round(degree_resolution / degperhour, ndigits=1))+'H'
-
-    # Number of minutes in a day
+    # Constants
+    degperhour = 0.55 # Solar rotation
     minutes_per_day = 1440
 
-    # Compute cadence based on degree resolution and degrees per hour
+    # Calculate raw cadence
     raw_cadence_hours = degree_resolution / degperhour
     raw_cadence_minutes = raw_cadence_hours * 60  # Convert to minutes
 
-    # Force cadence to be divisible by the number of minutes in a day
-    cadence = str(minutes_per_day // round(minutes_per_day / raw_cadence_minutes))+'min'
-
-    if np.isnan(degperhour): cadence = '2H'
+    # Calculate the cadence as a divisor of minutes_per_day
+    divisors = [d for d in range(1, minutes_per_day + 1) if minutes_per_day % d == 0]
+    cadence_minutes = min(divisors, key=lambda x: abs(x - raw_cadence_minutes))
+    cadence = f'{cadence_minutes}min'
 
     if 'Region' not in spacecraft:
         spacecraft['Region'] = spacecraft['V']*np.nan
@@ -164,9 +144,13 @@ def ballistic(spacecraft, degree_resolution=0.5, COR=0):
 
     spacecraft = spacecraft[['N', 'V', 'R', 'CARR_LON_RAD', 'Region', 'Spacecraft_ID']]
     
-    spacecraft.dropna(subset=['V', 'N'], inplace=True)
-    spacecraft = spacecraft.resample(rule=cadence).median()
-
+    spacecraft_filtered = spacecraft.dropna(subset=['V', 'N'])
+    try:
+        spacecraft = pad_data_with_nans(spacecraft_filtered.resample(rule=cadence).median()
+                                        ,spacecraft.index[0]
+                                        ,spacecraft.index[-1], cadence=cadence)
+    except Exception:
+        pass
 
     L = pd.Timedelta(cadence).total_seconds() * 600 / 1.5e8 /10 # CHARACTERISTIC DISTANCE /10
 
@@ -225,29 +209,25 @@ def ballistic_reverse(spacecraft, degree_resolution=0.5, COR=0):
     """
     ID = spacecraft_ID(spacecraft, ID_number=True)
 
-    lon_sc = spacecraft.dropna(subset=['CARR_LON'])
-    lon = lon_sc['CARR_LON'].to_numpy()
-    shift_lon = np.roll(lon,1)
-    peaks = abs(lon - shift_lon)
-    peak_indices = np.where(peaks > 300)[0]
-    delta_lon = lon[0] - lon[-1] + 360*len(peak_indices)
-    if delta_lon < 0:
-         delta_lon +=  360
-    degperhour = (delta_lon
-                /(spacecraft.index[-1]-spacecraft.index[0]).total_seconds()*3600)
-    cadence = str(round(degree_resolution / degperhour, ndigits=1))+'H'
-
-    # Number of minutes in a day
+    # Constants
+    degperhour = 0.55 # Solar rotation
     minutes_per_day = 1440
 
-    # Compute cadence based on degree resolution and degrees per hour
+    # Calculate raw cadence
     raw_cadence_hours = degree_resolution / degperhour
     raw_cadence_minutes = raw_cadence_hours * 60  # Convert to minutes
 
-    # Force cadence to be divisible by the number of minutes in a day
-    cadence = str(minutes_per_day // round(minutes_per_day / raw_cadence_minutes))+'min'
+    # Calculate the cadence as a divisor of minutes_per_day
+    divisors = [d for d in range(1, minutes_per_day + 1) if minutes_per_day % d == 0]
+    cadence_minutes = min(divisors, key=lambda x: abs(x - raw_cadence_minutes))
+    cadence = f'{cadence_minutes}min'
 
-    if np.isnan(degperhour): cadence = '2H'
+    # Force cadence to be divisible by the number of minutes in a day
+    try:
+        cadence = str(minutes_per_day // round(minutes_per_day / raw_cadence_minutes))+'min'
+
+    except:
+        cadence = '2H'
 
     if 'Region' not in spacecraft:
         spacecraft['Region'] = spacecraft['V']*np.nan
@@ -256,8 +236,10 @@ def ballistic_reverse(spacecraft, degree_resolution=0.5, COR=0):
 
     spacecraft = spacecraft[['N', 'V', 'R', 'CARR_LON_RAD', 'Region', 'Spacecraft_ID']]
     
-    spacecraft.dropna(subset=['V', 'N'], inplace=True)
-    spacecraft = spacecraft.resample(rule=cadence).median()
+    spacecraft_filtered = spacecraft.dropna(subset=['V', 'N'])
+    spacecraft = pad_data_with_nans(spacecraft_filtered.resample(rule=cadence).median()
+                                    ,spacecraft.index[0]
+                                    ,spacecraft.index[-1], cadence=cadence)
 
 
     L = pd.Timedelta(cadence).total_seconds() * 600 / 1.5e8 /10 # CHARACTERISTIC DISTANCE /10
@@ -441,22 +423,24 @@ def cut_from_sim(sim, spacecraft=None):
         closest_idx = distances.idxmin()
 
         # Store the corresponding 'V' value, Region and Spacecraft ID
-        closest_V[i] = sim.loc[closest_idx, 'V']
-        if 'Region' in sim:
-            Region[i] = sim.loc[closest_idx, 'Region']
-        if 'Spacecraft_ID' in sim:
-            Space_ID[i] = sim.loc[closest_idx, 'Spacecraft_ID']
-        
-        if abs(sim.loc[closest_idx, 'CARR_LON_RAD'] - row['CARR_LON_RAD']) > 1 / 180 * np.pi:
+        if not np.isnan(closest_idx):
+            closest_V[i] = sim.loc[closest_idx, 'V']
+
+            if 'Region' in sim:
+                Region[i] = sim.loc[closest_idx, 'Region']
+            if 'Spacecraft_ID' in sim:
+                Space_ID[i] = sim.loc[closest_idx, 'Spacecraft_ID']
             
-            closest_V[i] = np.nan
-            if 'Region' in sim:
-                Region[i] = 0
-        
-        if abs(sim.loc[closest_idx, 'R'] - row['R']) > 0.1:
-            closest_V[i] = np.nan
-            if 'Region' in sim:
-                Region[i] = 0
+            if abs(sim.loc[closest_idx, 'CARR_LON_RAD'] - row['CARR_LON_RAD']) > 1 / 180 * np.pi:
+                
+                closest_V[i] = np.nan
+                if 'Region' in sim:
+                    Region[i] = 0
+            
+            if abs(sim.loc[closest_idx, 'R'] - row['R']) > 0.1:
+                closest_V[i] = np.nan
+                if 'Region' in sim:
+                    Region[i] = 0
 
     # Create a new DataFrame with the results
     result = pd.DataFrame({
@@ -468,310 +452,3 @@ def cut_from_sim(sim, spacecraft=None):
     })
     
     return result
-
-# def ballistic(spacecraft, cadence='0.5H'):
-#     """
-#     Generate a new NumPy array with a simulated propagation of the spacecraft data
-#     Only radial velocity taken into account
-
-#     Parameters:
-#     - input_data: 
-            
-#             spacecraft:
-
-#             pd dataframe of a spacecraft's in-situ signature
-#             Spacecraft data from which to generate the simulation has to contain the following columns:
-#             'N': density
-#             'V': velocity
-#             'R': distance
-#             'CARR_LON_RAD': carrington longitude in radians
-
-#             L: interaction radius in AU
-
-#     Returns:
-#     - sim: np.ndarray
-    
-#         A simulated NumPy array containing all the steps in one long column
-#         size: ( n*(n+1)/2 ,  5 )
-#         columns: (N, V, R, CARR_LON_RAD, ITERATION)
-#         ITERATION denotes the number of steps as well as the number of data points
-
-
-#     Examples:
-#         sim = ballstic_propagation(solo, '1H')
-#     """
-
-#     import numpy as np
-#     import pandas
-    
-#     #import numba
-#     #@numba.jit(nopython=True, parallel = True)
-
-#     spacecraft = spacecraft.resample(rule=cadence).first()
- 
-#     if 'Region' in spacecraft:
-#         input_data = spacecraft[['N', 'V', 'R', 'CARR_LON_RAD', 'Region']].to_numpy()
-#     else:
-#         input_data = spacecraft[['N', 'V', 'R', 'CARR_LON_RAD']].to_numpy()
-
-#     hours = pd.Timedelta(cadence).total_seconds() / 3600
-
-#     n = input_data.shape[0]
-
-#     # Pre-allocate array with NaN values for the entire structure
-#     sim = np.empty((n * (n + 1) // 2, 6))  # 5 columns for 'N', 'V', 'R', 'L', 'ITERATION'
-
-#     # Iterate over n steps for simulation
-#     for i in range(n):
-
-#         if i == 0:
-#             # Initial values for the first step
-#             sim[0, 4] = 0
-#             sim[0, 1] = input_data[0, 1]  # 'V' column
-#             sim[0, 0] = input_data[0, 0]  # 'N' column
-#             sim[0, 2] = input_data[0, 2]  # 'R' column
-#             sim[0, 3] = input_data[0, 3] - 0.0096 * hours  # 'CARR_LON_RAD' column
-#             if 'Region' in spacecraft:
-#                 sim[0, 5] = input_data[0, 4]
-#         else:
-#             # Update values based on previous step and input data
-#             first = i * (i + 1) // 2
-#             last = first + i
-#             first_previous = i * (i - 1) // 2
-            
-#             #ITERATION
-#             sim[first : last + 1, 4] = i
-
-
-#             #V
-#             sim[first : last + 1, 1] = sim[first_previous : first_previous + i + 1, 1]
-#             sim[last, 1] = input_data[i, 1]
-
-
-#             #N
-#             sim[first : last + 1, 0] = sim[first_previous : first_previous + i + 1, 0]
-#             sim[last, 0] = input_data[i, 0]
-
-
-#             #R
-#             sim[first : last + 1, 2] = sim[first_previous : first_previous + i + 1, 2] + \
-#                                                sim[first_previous : first_previous + i + 1, 1] / 1.4959787 / 10**8 * hours * 3600.
-#             sim[last, 2] = input_data[i, 2]
-
-
-#             #CARR_LON_RAD
-#             sim[first : last + 1, 3] = sim[first_previous : first_previous + i + 1, 3] - 0.0096 * hours
-#             sim[last, 3] = input_data[i, 3]
-            
-#             #REGION
-#             if 'Region' in spacecraft:
-#                 sim[first : last + 1, 5] = sim[first_previous : first_previous + i + 1, 5]
-#                 sim[last, 5] = input_data[i, 4]
-
-
-#     output_data = pd.DataFrame({
-#         'CARR_LON_RAD': sim[:, 3],
-#         'R': sim[:, 2],
-#         'V': sim[:, 1],
-#         'N': sim[:, 0],
-#         'ITERATION': sim[:, 4],
-#         'Region': np.round(sim[:, 5])
-#     }, index=spacecraft.index[0] + sim[:, 4] * pd.Timedelta(cadence))
-
-#     return output_data
-
-
-# def ballistic_reverse(spacecraft, cadence='0.5H'):
-#     """
-#     Generate a new NumPy array with a simulated propagation of the spacecraft data
-#     IN REVERSE
-
-#     Only radial velocity taken into account
-
-#     Parameters:
-#     - input_data: 
-            
-#             spacecraft:
-
-#             pd dataframe of a spacecraft's in-situ signature
-#             Spacecraft data from which to generate the simulation has to contain the following columns:
-#             'N': density
-#             'V': velocity
-#             'R': distance
-#             'CARR_LON_RAD': carrington longitude in radians
-            
-#             cadence: the cadence with which the model runs
-            
-#     Returns:
-#     - sim: np.ndarray
-    
-#         A simulated NumPy array containing all the steps in one long column
-#         size: ( n*(n+1)/2 ,  5 )
-#         columns: (N, V, R, CARR_LON_RAD, ITERATION)
-#         ITERATION denotes the number of steps as well as the number of data points
-
-
-#     Examples:
-#         sim = ballstic_propagation(solo, '1H')
-#     """
-
-#     import numpy as np
-#     import pandas
-    
-#     #import numba
-#     #@numba.jit(nopython=True, parallel = True)
-
-#     spacecraft = spacecraft.resample(rule=cadence).first()
- 
-#     if 'Region' in spacecraft:
-#         input_data = spacecraft[['N', 'V', 'R', 'CARR_LON_RAD', 'Region']].to_numpy()
-#     else:
-#         input_data = spacecraft[['N', 'V', 'R', 'CARR_LON_RAD']].to_numpy()
-
-#     hours = pd.Timedelta(cadence).total_seconds() / 3600
-
-#     n = input_data.shape[0]
-
-#     # Pre-allocate array with NaN values for the entire structure
-#     sim = np.empty((n * (n + 1) // 2, 6))  # 5 columns for 'N', 'V', 'R', 'L', 'ITERATION'
-
-#     # Iterate over n steps for simulation
-#     for i in range(n):
-
-#         if i == 0:
-#             # Initial values for the first step
-#             sim[0, 4] = 0
-#             sim[0, 1] = input_data[0, 1]  # 'V' column
-#             sim[0, 0] = input_data[0, 0]  # 'N' column
-#             sim[0, 2] = input_data[0, 2]  # 'R' column
-#             sim[0, 3] = input_data[0, 3] + 0.0096 * hours  # 'CARR_LON_RAD' column
-#             if 'Region' in spacecraft:
-#                 sim[0, 5] = input_data[0, 4]
-#         else:
-#             # Update values based on previous step and input data
-#             first = i * (i + 1) // 2
-#             last = first + i
-#             first_previous = i * (i - 1) // 2
-            
-#             #ITERATION
-#             sim[first : last + 1, 4] = i
-
-
-#             #V
-#             sim[first : last + 1, 1] = sim[first_previous : first_previous + i + 1, 1]
-#             sim[last, 1] = input_data[i, 1]
-
-
-#             #N
-#             sim[first : last + 1, 0] = sim[first_previous : first_previous + i + 1, 0]
-#             sim[last, 0] = input_data[i, 0]
-
-
-#             #R
-#             sim[first : last + 1, 2] = sim[first_previous : first_previous + i + 1, 2] - \
-#                                                sim[first_previous : first_previous + i + 1, 1] / 1.4959787 / 10**8 * hours * 3600.
-#             sim[last, 2] = input_data[i, 2]
-
-
-#             #CARR_LON_RAD
-#             sim[first : last + 1, 3] = sim[first_previous : first_previous + i + 1, 3] + 0.0096 * hours
-#             sim[last, 3] = input_data[i, 3]
-            
-#             #REGION
-#             if 'Region' in spacecraft:
-#                 sim[first : last + 1, 5] = sim[first_previous : first_previous + i + 1, 5]
-#                 sim[last, 5] = input_data[i, 4]
-
-#     sim2 = np.empty((n**2, 6))
-#     last_iteration = sim[-1, 4]
-#     sim_last = sim[sim[:, 4]==last_iteration]
-#     print(last_iteration)
-
-#     for i in range(n):
-#         sim2[i*n: (i+1)*n, 0] = sim_last[:, 0] #N
-#         sim2[i*n: (i+1)*n, 1] = sim_last[:, 1] #V
-#         sim2[i*n: (i+1)*n, 2] = sim_last[:, 2] - i * sim_last[:, 1] / 1.4959787 / 10**8 * hours * 3600.
-#         sim2[i*n: (i+1)*n, 3] = sim_last[:, 3] + i * 0.0096 * hours
-#         sim2[i*n: (i+1)*n, 4] = sim_last[:, 4] + i
-#         if 'Region' in spacecraft:
-#             sim2[i*n: (i+1)*n, 5] = sim_last[:, 4] #Region
-
-#     sim = np.vstack([sim, sim2])
-
-
-#     output_data = pd.DataFrame({
-#         'CARR_LON_RAD': sim[:, 3],
-#         'R': sim[:, 2],
-#         'V': sim[:, 1],
-#         'N': sim[:, 0],
-#         'ITERATION': sim[:, 4],
-#         'Regions': np.round(sim[:,5]),
-#     }, index=spacecraft.index[0] - sim[:, 4] * pd.Timedelta(cadence))
-
-#     output_data = output_data[output_data['R']> 0.005]
-
-#     return output_data
-
-
-# def cut_from_sim(sim, spacecraft=None):
-#     """
-#     Extracts the values of 'V' from the sim DataFrame that correspond to the closest 'CARR_LON_RAD'
-#     and 'R' values in the spacecraft DataFrame.
-    
-#     Parameters:
-#     - sim: pd.DataFrame
-#         Simulation data with columns 'CARR_LON_RAD', 'R', and 'V', 'Region' optional.
-#     - spacecraft: pd.DataFrame, optional
-#         Spacecraft data with columns 'CARR_LON_RAD' and 'R'. If None, default values are 1AU.
-    
-#     Returns:
-#     - result: pd.DataFrame
-#         DataFrame with the closest values of 'V' and 'Region' from sim based on 'CARR_LON_RAD' and 'R' in spacecraft.
-#     """
-    
-#     if spacecraft is None:
-#         spacecraft = pd.DataFrame({
-#             'CARR_LON_RAD': np.linspace(0, 2*np.pi, 720),
-#             'R': np.ones(720)  # 1AU
-#         })
-    
-#     sim = sim.reset_index(drop=True)
-
-#     # Create an empty array to store the closest 'V' values
-#     closest_V = np.empty(len(spacecraft))
-#     Region = np.zeros(len(spacecraft))
-
-#     # Iterate over each row in the spacecraft DataFrame
-#     for i, row in spacecraft.iterrows():
-#         # Calculate the Euclidean distance between spacecraft values and sim values for 'CARR_LON_RAD' and 'R'
-#         distances = np.sqrt((sim['CARR_LON_RAD'] - row['CARR_LON_RAD'])**2 +
-#                             (sim['R'] - row['R'])**2)
-        
-#         # Find the index of the minimum distance
-#         closest_idx = distances.idxmin()
-#         # Store the corresponding 'V' value and Region
-#         closest_V[i] = sim.loc[closest_idx, 'V']
-#         if 'Region' in spacecraft:
-#             Region[i] = sim.loc[closest_idx, 'Region']
-        
-#         if abs(sim.loc[closest_idx, 'CARR_LON_RAD'] - row['CARR_LON_RAD']) > 1 / 180 * np.pi:
-            
-#             closest_V[i] = np.nan
-#             if 'Region' in spacecraft:
-#                 Region[i] = 0
-        
-#         if abs(sim.loc[closest_idx, 'CARR_LON_RAD'] - row['CARR_LON_RAD']) > 0.1:
-#             closest_V[i] = np.nan
-#             if 'Region' in spacecraft:
-#                 Region[i] = 0
-        
-    
-#     # Create a new DataFrame with the results
-#     result = pd.DataFrame({
-#         'CARR_LON_RAD': spacecraft['CARR_LON_RAD'],
-#         'R': spacecraft['R'],
-#         'V': closest_V,
-#         'Region': Region
-#     })
-    
-#     return result

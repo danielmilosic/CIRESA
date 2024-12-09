@@ -93,86 +93,89 @@ def plot(stereo_a_df):
     # Create subplots with specified layout
     fig, axes = plt.subplots(nrows=7, ncols=1, figsize=(10, 12), sharex=True)
 
-    # Plot multiple time series using seaborn's lineplot in each subplot
+    # Plot each series with try-except to handle missing columns
+    try:
+        sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='V', ax=axes[0], color='black')
+    except KeyError:
+        pass
+    axes[0].set_ylabel('$[km s^{-1}]$')
 
-
-    sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='V', ax=axes[0], color='black')
-    #sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='V_R', ax=axes[0], color='blue', alpha=0.5)
-    #axes[0].set_ylabel('V $[km s^{-1}]$')
-
-    
-    #sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='V_T', ax=axes[1], label='V_T')
-    #sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='V_N', ax=axes[1], label='V_N')
-    #axes[1].set_ylabel('V_TN $[km s^{-1}]$')
-
-    sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='N', ax=axes[1], color='black')
+    try:
+        sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='N', ax=axes[1], color='black')
+    except KeyError:
+        pass
     axes[1].set_ylabel('N $[cm^{-3}]$')
 
-
-    sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='P', ax=axes[2], color='black')
+    try:
+        sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='P', ax=axes[2], color='black')
+    except KeyError:
+        pass
     axes[2].set_ylabel('P $[nPa]$')
 
-    stereo_a_df['polarity'] = ['+' if pol > 0 else '-' for pol in stereo_a_df['POL']]
-    colors = {'-': 'tab:blue', '+': 'tab:red'}
-    sns.scatterplot(data=stereo_a_df, x=stereo_a_df.index, y='B', ax=axes[3], hue='polarity', palette = colors, s=5, alpha=1)
+    try:
+        stereo_a_df['polarity'] = ['+' if pol > 0 else '-' for pol in stereo_a_df['POL']]
+        colors = {'-': 'tab:blue', '+': 'tab:red'}
+        sns.scatterplot(data=stereo_a_df, x=stereo_a_df.index, y='B', ax=axes[3], hue='polarity', palette=colors, s=5, alpha=1)
+    except KeyError:
+        pass
     axes[3].set_ylabel('B $[nT]$')
-    #axes[4].set_ylim([0, 20])
 
-    sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='B_R', ax=axes[4], color='red', label='B_R')
-    sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='B_T', ax=axes[4], color='green', label='B_T')
-    sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='B_N', ax=axes[4], color='blue', label='B_N')
+    try:
+        sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='B_R', ax=axes[4], color='red', label='B_R')
+        sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='B_T', ax=axes[4], color='green', label='B_T')
+        sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='B_N', ax=axes[4], color='blue', label='B_N')
+    except KeyError:
+        pass
     axes[4].set_ylabel('B $[nT]$')
 
-    sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='S_P', ax=axes[5], color='black')
+    try:
+        sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='S_P', ax=axes[5], color='black')
+    except KeyError:
+        pass
     axes[5].fill_between(stereo_a_df.index, 2.69, 4, color='grey', alpha=0.7)
-    #axes[5].set_ylim([0, 50])
     axes[5].set_ylabel('$S_p$ $[eV cm^{2}]$')
 
-    sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='R', ax=axes[6], color='black')
+    try:
+        sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='R', ax=axes[6], color='black')
+    except KeyError:
+        pass
     axes[6].set_ylabel('r $[AU]$')
     axes[6].set_ylim([0.9, 1.1])
+    
+    # Handle twin axes with try-except
+    try:
+        ax2 = axes[1].twinx()
+        sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='T', ax=ax2, color='tab:blue')
+        ax2.set_ylabel('T $[K]$')
+        ax2.spines['right'].set_color('tab:blue')
+        ax2.yaxis.label.set_color('tab:blue')
+        ax2.tick_params(axis='y', colors='tab:blue')
+    except KeyError:
+        pass
 
+    try:
+        ax5 = axes[6].twinx()
+        sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='LAT', ax=ax5, color='tab:blue')
+        ax5.set_ylabel('LAT $[°]$')
+        ax5.spines['right'].set_color('tab:blue')
+        ax5.yaxis.label.set_color('tab:blue')
+        ax5.tick_params(axis='y', colors='tab:blue')
+    except KeyError:
+        pass
 
-    ax2 = axes[1].twinx()
-    sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='T',  ax=ax2, color='tab:blue')
-    ax2.set_ylabel('T $[K]$')
-    #ax2.set_ylim([0, 2000000])
-    ax2.spines['right'].set_color('tab:blue')
-    ax2.yaxis.label.set_color('tab:blue')
-    ax2.tick_params(axis='y', colors='tab:blue')
+    try:
+        ax3 = axes[2].twinx()
+        sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='Beta', ax=ax3, color='tab:blue')
+        ax3.set_ylabel(r'$\beta$')
+        ax3.set_yscale('log')
+        ax3.spines['right'].set_color('tab:blue')
+        ax3.yaxis.label.set_color('tab:blue')
+        ax3.tick_params(axis='y', colors='tab:blue')
+    except KeyError:
+        pass
 
-
-    ax5 = axes[6].twinx()
-    sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='LAT', ax=ax5, color='tab:blue')
-    #ax5.set_ylim([-10, 50])
-    ax5.set_ylabel('LAT $[°]$')
-    ax5.spines['right'].set_color('tab:blue')
-    ax5.yaxis.label.set_color('tab:blue')
-    ax5.tick_params(axis='y', colors='tab:blue')
-
-    ax3 = axes[2].twinx()
-    sns.lineplot(data=stereo_a_df, x=stereo_a_df.index, y='Beta', ax=ax3, color='tab:blue')
-    ax3.set_ylabel(r'$\beta$')
-    ax3.set_yscale('log')
-    ax3.spines['right'].set_color('tab:blue')
-    ax3.yaxis.label.set_color('tab:blue')
-    ax3.tick_params(axis='y', colors='tab:blue')
-
-
-    # # Customize the x-axis locator and formatter to have one date label for each tick
-    # #locator = AutoDateLocator()
-    # locator = DayLocator()
-    # formatter = DateFormatter("%y-%m-%d %H:%M")
-    # axes[-1].xaxis.set_major_locator(locator)
-    # axes[-1].xaxis.set_major_formatter(formatter)
-    # plt.xticks(rotation=45)
-
-
-    # #axes[0].set_title('stereo_a')
-    # axes[1].set_title('')
-    # axes[2].set_title('')
-
-    plt.tight_layout(pad=1., w_pad=0.5, h_pad=.1)
+    plt.tight_layout(pad=1., w_pad=0.5, h_pad=0.1)
+    plt.show()
 
 
 def load(month):
@@ -195,7 +198,7 @@ def load(month):
         print(f)
         df = pd.read_parquet(f)
         spacecraft.append(df)
-
+    
     return pd.concat(spacecraft)
 
 def delete(month):

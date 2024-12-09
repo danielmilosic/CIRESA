@@ -66,7 +66,7 @@ def find_parquet_files(root_dir, months = 'all'):
 
 
 
-def get_month_dates(month_str):
+def get_month_dates(month_str, plus_one=True):
     from datetime import datetime, timedelta
     import calendar
 
@@ -79,7 +79,8 @@ def get_month_dates(month_str):
     # Get the last day of the month
     last_day = datetime(year, month, calendar.monthrange(year, month)[1])
 
-    last_day += timedelta(days=1)
+    if plus_one:
+        last_day += timedelta(days=1)
 
     # Format the dates as 'YYYY-MM-DD'
     first_day_str = first_day.strftime('%Y-%m-%d')

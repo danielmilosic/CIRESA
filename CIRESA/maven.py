@@ -107,6 +107,7 @@ def reduce(timeframe, cadence = '0.1H'):
     #maven_files = filefinder.find_files_in_timeframe(dir_maven, timeframe[0], timeframe[1])
     #maven_files = filefinder.find_files_in_timeframe(dir_maven, timeframe[0], timeframe[1])
     maven_files = filefinder.find_files_in_timeframe(dir_maven, timeframe[0], timeframe[1])
+    maven_files = [file for file in maven_files if os.path.getsize(file) >= 1_048_576]
     print('maven files:', maven_files)
     print('### EXTRACTING mavenNETIC FIELD DATA ###')
     
@@ -204,36 +205,89 @@ def reduce(timeframe, cadence = '0.1H'):
     return maven_df
 
 import pandas as pd
-def filter_sw(df, cadence = '6H', interpolate = False):
+import numpy as np
 
-    df[df['V']<1000]
-    df = df[df['V']>250]
-    df = df[df['N']<150]
-    df = df[df['P']<1000]
-    df = df[df['B']<100]
-    df = df[df['V_T']<500]
-    df = df[df['quality']>0.99]
+def filter_sw(df, cadence='6H', interpolate=False):
+    def process_chunk(chunk):
+        if chunk.empty:
+            return pd.DataFrame()  # Return an empty DataFrame if the chunk is empty
 
-    maxi = df.resample(cadence).max()
-    mini = df.resample(cadence).min()
-    medi = df.resample(cadence).median()
+        try:
+            chunk = chunk[chunk['V'] < 1000]
+            chunk = chunk[chunk['V'] > 250]
+            chunk = chunk[chunk['V_T'] < 500]
+            chunk = chunk[chunk['N'] < 150]
+        except KeyError:
+            pass
 
-    resampled_df = maxi
-    resampled_df[['B_R', 'B_T', 'B_N', 'V_T', 'LAT', 'CARR_LON']] = medi[['B_R', 'B_T', 'B_N', 'V_T', 'LAT', 'CARR_LON']]
+        try:
+            chunk = chunk[chunk['P'] < 1000]
+        except KeyError:
+            pass
 
-    resampled_df['P_t'] = (resampled_df['N'] * resampled_df['V']**2) / 10**19 / 1.6727   * 10**6 *10**9 # J/cm^3 to nPa
-    resampled_df['P_B'] = resampled_df['B']**2 / 2. / 1.25663706212*10**(-6) / 10**9    * 10**6 *10**9 #nT to T # J/cm^3 to nPa
-    resampled_df['Beta'] = resampled_df['P_t'] / resampled_df['P_B']
-    resampled_df['S_P'] = resampled_df['T']/resampled_df['N']**(2./3.)/11604.5
-    resampled_df['POL'] = np.sign(resampled_df['B_R'] - resampled_df['B_T']*resampled_df['R']*2.7*10**(-6)/resampled_df['V'])
-    
-    if interpolate:
-        new_time_index = pd.date_range(start=df.index.min(), end=df.index.max(), freq='0.1H')
-        resampled_df = resampled_df.reindex(new_time_index)
-        resampled_df = resampled_df.interpolate(method='linear')
-        resampled_df[['LAT', 'CARR_LON', 'INERT_LON', 'CARR_LON_RAD']] = df[['LAT', 'CARR_LON', 'INERT_LON', 'CARR_LON_RAD']]
+        try:
+            chunk = chunk[chunk['B'] < 100]
+        except KeyError:
+            pass
 
-    return resampled_df
+        try:
+            chunk = chunk[chunk['quality'] > 0.99]
+        except KeyError:
+            pass
+
+        # Resampling logic
+        maxi = chunk.resample(cadence).max()
+        mini = chunk.resample(cadence).min()
+        medi = chunk.resample(cadence).median()
+
+        resampled_chunk = maxi
+        try:
+            resampled_chunk[['B_R', 'B_T', 'B_N', 'V_T', 'LAT', 'CARR_LON']] = medi[['B_R', 'B_T', 'B_N', 'V_T', 'LAT', 'CARR_LON']]
+        except KeyError:
+            pass
+
+        try:
+            resampled_chunk['P_t'] = (resampled_chunk['N'] * resampled_chunk['V']**2) / 10**19 / 1.6727 * 10**6 * 10**9  # J/cm^3 to nPa
+            resampled_chunk['S_P'] = resampled_chunk['T'] / resampled_chunk['N']**(2./3.) / 11604.5
+        except KeyError:
+            pass
+
+        try:
+            resampled_chunk['P_B'] = resampled_chunk['B']**2 / 2. / 1.25663706212 * 10**(-6) / 10**9 * 10**6 * 10**9  # nT to T
+            resampled_chunk['Beta'] = resampled_chunk['P_t'] / resampled_chunk['P_B']
+            resampled_chunk['POL'] = np.sign(
+                resampled_chunk['B_R'] - resampled_chunk['B_T'] * resampled_chunk['R'] * 2.7 * 10**(-6) / resampled_chunk['V']
+            )
+        except KeyError:
+            pass
+
+        if interpolate:
+            try:
+                # Ensure valid start and end times
+                if pd.isna(chunk.index.min()) or pd.isna(chunk.index.max()):
+                    return resampled_chunk  # Skip interpolation if timestamps are invalid
+
+                new_time_index = pd.date_range(start=chunk.index.min(), end=chunk.index.max(), freq='0.1H')
+                resampled_chunk = resampled_chunk.reindex(new_time_index)
+                resampled_chunk = resampled_chunk.interpolate(method='linear')
+                resampled_chunk[['LAT', 'CARR_LON', 'INERT_LON', 'CARR_LON_RAD']] = chunk[['LAT', 'CARR_LON', 'INERT_LON', 'CARR_LON_RAD']]
+            except KeyError:
+                pass
+
+        return resampled_chunk
+
+    # Split input data into monthly chunks
+    monthly_chunks = [chunk for _, chunk in df.groupby(pd.Grouper(freq='M'))]
+
+    # Filter out invalid chunks
+    valid_chunks = [chunk for chunk in monthly_chunks if not chunk.empty and not pd.isna(chunk.index.min())]
+
+    # Process each valid chunk and concatenate the results
+    processed_chunks = [process_chunk(chunk) for chunk in valid_chunks]
+    result = pd.concat(processed_chunks)
+
+    return result
+
 def plot(maven_df):
     
     import matplotlib.pyplot as plt
