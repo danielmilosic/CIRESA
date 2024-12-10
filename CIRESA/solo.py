@@ -16,7 +16,7 @@ def reduce(timeframe, cadence):
     from astropy.time import Time
     import os
 
-    root_dir = 'C:/Users/14milosi/CIRESA/solar_orbiter_data/'
+    root_dir = 'solar_orbiter_data/'
     
     dir_swa = root_dir + 'swa/science/l2/'
     dir_his = root_dir + 'swa/science/l3/'
@@ -268,7 +268,7 @@ def load(month='all'):
     from CIRESA import filefinder
     import pandas as pd
 
-    root_dir = 'C:/Users/14milosi/CIRESA/reduced_data/solo'
+    root_dir = 'reduced_data/solo'
 
     files = filefinder.find_parquet_files(root_dir, month)
 
@@ -292,7 +292,7 @@ def delete(month):
     import os
 
     timeframe = filefinder.get_month_dates(month)
-    root_dir = 'C:/Users/14milosi/CIRESA/solar_orbiter_data/'
+    root_dir = 'solar_orbiter_data/'
     
     dir_swa = root_dir + 'swa/science/l2'
     dir_his = root_dir + 'swa/science/l3'

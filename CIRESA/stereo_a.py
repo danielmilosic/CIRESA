@@ -13,7 +13,7 @@ def reduce(timeframe, cadence):
     import numpy as np
     from astropy.time import Time
 
-    root_dir = 'C:/Users/14milosi/CIRESA/stereo_data/'
+    root_dir = 'stereo_data/'
     
     dir_impact = root_dir + '/impact/level1/ahead'
     dir_plastic = root_dir + '/plastic/level2/Protons/Derived_from_1D_Maxwellian/ahead'
@@ -183,7 +183,7 @@ def load(month):
     from CIRESA import filefinder
     import pandas as pd
 
-    root_dir = 'C:/Users/14milosi/CIRESA/reduced_data/stereo_a'
+    root_dir = 'reduced_data/stereo_a'
 
     files = filefinder.find_parquet_files(root_dir, month)
 
@@ -207,7 +207,7 @@ def delete(month):
     import os
 
     timeframe = filefinder.get_month_dates(month)
-    root_dir = 'C:/Users/14milosi/CIRESA/stereo_data/'
+    root_dir = '/stereo_data/'
     
     dir_impact = root_dir + '/impact/level1/ahead'
     dir_plastic = root_dir + '/plastic/level2/Protons/Derived_from_1D_Maxwellian/ahead'

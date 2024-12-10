@@ -12,7 +12,7 @@ def reduce(timeframe, cadence):
     import numpy as np
     from astropy.time import Time
 
-    root_dir = 'CIRESA/omni_data/'
+    root_dir = 'omni_data/'
     omni_files = filefinder.find_files_in_timeframe(root_dir, timeframe[0], timeframe[1])
     print(omni_files)
 
@@ -174,7 +174,7 @@ def load(month):
     from CIRESA import filefinder
     import pandas as pd
 
-    root_dir = 'CIRESA/reduced_data/omni'
+    root_dir = 'reduced_data/omni'
 
     
     files = filefinder.find_parquet_files(root_dir, month)
@@ -200,7 +200,7 @@ def delete(month):
 
     timeframe = filefinder.get_month_dates(month)
 
-    root_dir = 'CIRESA/omni_data/'
+    root_dir = 'omni_data/'
     omni_files = filefinder.find_files_in_timeframe(root_dir, timeframe[0], timeframe[1])
 
     # Print the files to be deleted

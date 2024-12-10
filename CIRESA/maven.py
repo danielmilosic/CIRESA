@@ -383,7 +383,7 @@ def load(month='all', reduce_cadence=None, interpolate=False):
     from CIRESA import filefinder
     import pandas as pd
 
-    root_dir = 'C:/Users/14milosi/CIRESA/reduced_data/maven'
+    root_dir = 'reduced_data/maven'
 
     
     files = filefinder.find_parquet_files(root_dir, month)
@@ -413,7 +413,7 @@ def delete(month):
 
     timeframe = filefinder.get_month_dates(month)
 
-    root_dir = 'C:/Users/14milosi/CIRESA/maven_data/'
+    root_dir = 'maven_data/'
     maven_files = filefinder.find_files_in_timeframe(root_dir, timeframe[0], timeframe[1])
 
     # Print the files to be deleted

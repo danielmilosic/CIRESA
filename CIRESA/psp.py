@@ -28,7 +28,7 @@ def download(timeframe):
 def reduce(timeframe, cadence='0.1H'):
 
 
-    root_dir = 'C:/Users/14milosi/CIRESA/psp_data/'
+    root_dir = 'psp_data/'
     
     dir_fields = root_dir + 'fields/'
     dir_spi = root_dir + 'sweap/spi/'
@@ -265,7 +265,7 @@ def load(month):
     from CIRESA import filefinder
     import pandas as pd
 
-    root_dir = 'C:/Users/14milosi/CIRESA/reduced_data/psp'
+    root_dir = 'reduced_data/psp'
 
     files = filefinder.find_parquet_files(root_dir, month)
 
@@ -289,7 +289,7 @@ def delete(month):
     import os
 
     timeframe = filefinder.get_month_dates(month)
-    root_dir = 'C:/Users/14milosi/CIRESA/psp_data/'
+    root_dir = 'psp_data/'
     
     dir_fields = root_dir + 'fields/'
     dir_spi = root_dir + 'sweap/spi/'
