@@ -1,3 +1,5 @@
+from CIRESA.utils import suppress_output
+
 def download(timeframe):
     import pyspedas
 
@@ -13,6 +15,9 @@ def reduce(timeframe, cadence):
     import numpy as np
     from astropy.time import Time
 
+    if isinstance(timeframe, str):
+        timeframe = filefinder.get_month_dates(timeframe)
+
     root_dir = 'stereo_data/'
     
     dir_impact = root_dir + '/impact/level1/ahead'
@@ -22,6 +27,55 @@ def reduce(timeframe, cadence):
     plastic_files = filefinder.find_files_in_timeframe(dir_plastic, timeframe[0], timeframe[1])
 
     print(impact_files, plastic_files)
+
+        
+    # GET COORDINATES
+
+    print('DOWNLOADING COORDINATES')
+
+    coords_df = pd.DataFrame()
+    date_range = pd.date_range(timeframe[0], timeframe[1], freq='D').tolist()[:-1]
+    
+    for day in date_range:
+
+        print(day)
+
+        day_start = day
+        day_end = day + pd.Timedelta(days=1)
+        
+        # Create coord_df for the day with 2-hour intervals
+        coord_df = pd.DataFrame({'Time': pd.date_range(day_start, day_end, freq='2H')})
+        coord_df.set_index('Time', inplace=True)
+
+        # Get coordinates
+        #print('between here')
+        carr_lons, r, lats, lon = suppress_output(get_coordinates.get_coordinates, coord_df, 'Ahead')
+        #print('and here there is an erfa warning')
+        coord_df['LAT'] = lats
+        coord_df['R'] = r
+
+        lon = np.asarray(lon)
+        if (lon < -175).any() & (lon > 175).any():
+            lon[lon < 0] += 360
+
+        coord_df['INERT_LON'] = lon
+        # Interpolate to match df's index
+
+        coord_df = coord_df.resample(rule = cadence).interpolate(method='linear')
+        carr_lon = get_coordinates.calculate_carrington_longitude_from_lon(
+            coord_df.index, coord_df['INERT_LON']
+        )
+        
+        coord_df['CARR_LON'] = carr_lon
+
+        #print(coord_df)
+        coords_df = pd.concat([coords_df, coord_df])
+
+    coords_df = coords_df[~coords_df.index.duplicated(keep='first')]
+
+    coords_df['CARR_LON_RAD'] = coords_df['CARR_LON'] / 180 * np.pi
+
+
 
     #IMPACT MAG
 
@@ -54,11 +108,11 @@ def reduce(timeframe, cadence):
     plastic_df['V_R'] = plastic_df['proton_Vr_RTN']
     plastic_df['V_T'] = plastic_df['proton_Vt_RTN']
     plastic_df['V_N'] = plastic_df['proton_Vn_RTN']
-    plastic_df['CARR_LON'] = plastic_df['spcrft_lon_carr']
-    plastic_df['CARR_LON_RAD'] = plastic_df['CARR_LON']/180*3.1415926
-    plastic_df['LAT'] = plastic_df['spcrft_lat_hci']
-    plastic_df['INERT_LON'] = plastic_df['spcrft_lon_hci']
-    plastic_df['R'] = plastic_df['heliocentric_dist']/ 149597870.7
+    # plastic_df['CARR_LON'] = plastic_df['spcrft_lon_carr']
+    # plastic_df['CARR_LON_RAD'] = plastic_df['CARR_LON']/180*3.1415926
+    # plastic_df['LAT'] = plastic_df['spcrft_lat_hci']
+    # plastic_df['INERT_LON'] = plastic_df['spcrft_lon_hci']
+    # plastic_df['R'] = plastic_df['heliocentric_dist']/ 149597870.7
 
     plastic_df['P'] = (plastic_df['proton_number_density'] 
                        * plastic_df['proton_bulk_speed']**2) / 10**19 / 1.6727
@@ -71,7 +125,7 @@ def reduce(timeframe, cadence):
     plastic_df = plastic_df.resample(rule=cadence).median()
     
 
-    stereo_a_df = pd.concat([plastic_df, mag_df], axis=1)
+    stereo_a_df = pd.concat([coords_df, plastic_df, mag_df], axis=1)
 
     stereo_a_df['P_t'] = (stereo_a_df['N'] * stereo_a_df['V']**2) / 10**19 / 1.6727   * 10**6 *10**9 # J/cm^3 to nPa
     stereo_a_df['P_B'] = stereo_a_df['B']**2 / 2. / 1.25663706212*10**(-6) / 10**9    * 10**6 *10**9 #nT to T # J/cm^3 to nPa

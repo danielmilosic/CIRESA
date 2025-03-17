@@ -1,13 +1,14 @@
-
 import sys
 import os
 import warnings
 from erfa import ErfaWarning
+from astropy.utils.exceptions import ErfaWarning
 import pandas as pd
+import logging
 
 def suppress_output(func, *args, **kwargs):
     """
-    Executes a given function while suppressing its standard output and specific warnings.
+    Executes a function while suppressing standard output, standard error, warnings, and logging messages.
     
     Args:
         func (callable): The function to execute.
@@ -16,31 +17,35 @@ def suppress_output(func, *args, **kwargs):
     
     Returns:
         The result of the executed function.
-    
-    Behavior:
-        - Redirects `sys.stdout` to `os.devnull` to suppress any printed output.
-        - Suppresses warnings of type `ErfaWarning` and `RuntimeWarning`.
-        - Restores the original `sys.stdout` after execution, ensuring no permanent redirection.
-    
-    Notes:
-        - This function is useful for scenarios where verbose output or warnings 
-          are unnecessary and can clutter the logs or terminal.
     """
-    
-    # Save the original stdout
+    # Save original stdout, stderr, and logging level
     original_stdout = sys.stdout
+    original_stderr = sys.stderr
+    original_logging_level = logging.getLogger().level  # Get current logging level
+    warnings.filterwarnings("ignore", category=ErfaWarning)
     try:
-        # Suppress stdout by redirecting to devnull
+        # Redirect stdout and stderr to devnull
         sys.stdout = open(os.devnull, 'w')
-        
-        # Suppress specific warnings (ErfaWarning)
+        sys.stderr = open(os.devnull, 'w')
+
+        # Suppress warnings
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", ErfaWarning)
             warnings.simplefilter("ignore", RuntimeWarning)
+            warnings.simplefilter("ignore")  # Ignore all warnings
+
+            # Suppress logging
+            logging.getLogger().setLevel(logging.CRITICAL)  # Only show critical errors
+
+            # Run the function
             result = func(*args, **kwargs)
+
     finally:
-        # Always restore stdout, even if an error occurs
+        # Restore stdout, stderr, and logging level
         sys.stdout = original_stdout
+        sys.stderr = original_stderr
+        logging.getLogger().setLevel(original_logging_level)  # Restore logging level
+
     return result
 
 def spacecraft_ID(ID, ID_number=False):
@@ -75,6 +80,10 @@ def spacecraft_ID(ID, ID_number=False):
             raise ValueError("DataFrame must contain a 'Spacecraft_ID' column.")
     elif isinstance(ID, (int, float)):
         number = int(ID)
+    elif isinstance(ID, (str)):
+        if df[df['ID']==ID].any:
+            number = int(df[df['ID']==ID].index.values)
+            ID_number = True
     else:
         raise TypeError("ID must be a DataFrame, int, or float.")
 
@@ -87,21 +96,21 @@ def spacecraft_ID(ID, ID_number=False):
 from PIL import Image
 
 
-def glue_together(folder_a, folder_b, output_folder):
+def glue_together(folder_a, folder_b, output_folder, mode="horizontal"):
     """
-    Combines images from two folders by placing them side-by-side and saves the resulting images 
-    in the specified output folder.
+    Combines images from two folders by placing them side-by-side or stacked vertically,
+    then saves the resulting images in the specified output folder.
     
     Args:
         folder_a (str): Path to the first folder containing images.
         folder_b (str): Path to the second folder containing images.
         output_folder (str): Path to the folder where combined images will be saved.
-    
+        mode (str): "horizontal" to place images side-by-side, "vertical" to stack them.
+
     Notes:
-        - The function assumes that both folders contain PNG images and aligns the images based on height.
+        - Assumes both folders contain PNG images.
         - If the number of images in folder_a and folder_b do not match, a warning is displayed.
-        - Images are combined side-by-side. The resulting images are saved using the file names from folder_a.
-        - If the image heights differ, folder_b images are resized to match the height of folder_a images.
+        - If dimensions differ, images from folder_b are resized to match folder_a (width for vertical, height for horizontal).
     """
 
     # Create output folder if it doesn't exist
@@ -117,25 +126,38 @@ def glue_together(folder_a, folder_b, output_folder):
 
     # Process files
     for file_a, file_b in zip(files_a, files_b):
-        # Open images from both folders
+        # Open images
         img_a = Image.open(os.path.join(folder_a, file_a))
         img_b = Image.open(os.path.join(folder_b, file_b))
+
+        if mode == "horizontal":
+            # Ensure images have the same height
+            if img_a.height != img_b.height:
+                img_b = img_b.resize((img_b.width, img_a.height), Image.ANTIALIAS)
+            
+            # Create a new image with combined width
+            combined_size = (img_a.width + img_b.width, img_a.height)
+            img_b_offset = (img_a.width, 0)  # Paste img_b to the right
+
+        elif mode == "vertical":
+            # Ensure images have the same width
+            if img_a.width != img_b.width:
+                img_b = img_b.resize((img_a.width, img_b.height), Image.ANTIALIAS)
+            
+            # Create a new image with combined height
+            combined_size = (img_a.width, img_a.height + img_b.height)
+            img_b_offset = (0, img_a.height)  # Paste img_b below
         
-        # Ensure the images have the same height by resizing (optional, remove if not needed)
-        if img_a.height != img_b.height:
-            img_b = img_b.resize((img_b.width, img_a.height), Image.ANTIALIAS)
-        
-        # Create a new image with the combined width and same height
-        combined_width = img_a.width + img_b.width
-        combined_image = Image.new("RGB", (combined_width, img_a.height))
-        
-        # Paste the images side by side
+        else:
+            raise ValueError("Invalid mode. Choose 'horizontal' or 'vertical'.")
+
+        # Create combined image
+        combined_image = Image.new("RGB", combined_size)
         combined_image.paste(img_a, (0, 0))
-        combined_image.paste(img_b, (img_a.width, 0))
-        
-        # Save the combined image in the output folder
-        os.makedirs(output_folder, exist_ok=True)
-        output_path = os.path.join(output_folder, file_a)  # Use file_a name for the output
+        combined_image.paste(img_b, img_b_offset)
+
+        # Save combined image
+        output_path = os.path.join(output_folder, file_a)
         combined_image.save(output_path)
 
         print(f"Saved combined image: {output_path}")

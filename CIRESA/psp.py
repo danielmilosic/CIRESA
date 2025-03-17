@@ -8,6 +8,10 @@ from CIRESA.utils import suppress_output
 def download(timeframe):
     import pyspedas
 
+
+    if isinstance(timeframe, str):
+        timeframe = filefinder.get_month_dates(timeframe)
+
     print('### DOWNLOADING MAGNETIC FIELD DATA: 1 out 3 INSTRUMENTS ###')
 
     pyspedas.psp.fields(trange=timeframe, time_clip=True, datatype='mag_RTN', get_support_data=True
@@ -27,6 +31,8 @@ def download(timeframe):
 
 def reduce(timeframe, cadence='0.1H'):
 
+    if isinstance(timeframe, str):
+        timeframe = filefinder.get_month_dates(timeframe)
 
     root_dir = 'psp_data/'
     
@@ -39,6 +45,55 @@ def reduce(timeframe, cadence='0.1H'):
     spc_files = filefinder.find_files_in_timeframe(dir_spc, timeframe[0], timeframe[1])
 
     print(fields_files, spc_files, spi_files)
+
+    # GET COORDINATES
+
+    print('DOWNLOADING COORDINATES')
+
+    coords_df = pd.DataFrame()
+    date_range = pd.date_range(timeframe[0], timeframe[1], freq='D').tolist()[:-1]
+    
+    for day in date_range:
+
+        print(day)
+
+        day_start = day
+        day_end = day + pd.Timedelta(days=1)
+        
+        # Create coord_df for the day with 2-hour intervals
+        coord_df = pd.DataFrame({'Time': pd.date_range(day_start, day_end, freq='2H')})
+        coord_df.set_index('Time', inplace=True)
+
+        # Get coordinates
+        #print('between here')
+        carr_lons, r, lats, lon = suppress_output(get_coordinates.get_coordinates, coord_df, 'PSP')
+        #print('and here there is an erfa warning')
+        coord_df['LAT'] = lats
+        coord_df['R'] = r
+
+        lon = np.asarray(lon)
+        if (lon < -175).any() & (lon > 175).any():
+            lon[lon < 0] += 360
+
+        coord_df['INERT_LON'] = lon
+        # Interpolate to match df's index
+
+        coord_df = coord_df.resample(rule = cadence).interpolate(method='linear')
+        carr_lon = get_coordinates.calculate_carrington_longitude_from_lon(
+            coord_df.index, coord_df['INERT_LON']
+        )
+        
+        coord_df['CARR_LON'] = carr_lon
+
+        #print(coord_df)
+        coords_df = pd.concat([coords_df, coord_df])
+
+    coords_df = coords_df[~coords_df.index.duplicated(keep='first')]
+
+    coords_df['CARR_LON_RAD'] = coords_df['CARR_LON'] / 180 * np.pi
+
+
+    coords_df['Spacecraft_ID'] = 1
 
 
     #FIELDS
@@ -72,26 +127,26 @@ def reduce(timeframe, cadence='0.1H'):
                 fields_loop_df['B'] = np.sqrt(fields_loop_df['B_R']**2 + fields_loop_df['B_T']**2 + fields_loop_df['B_N']**2)
                 
                 
-                # GET COORDINATES
-                coord_df = fields_loop_df.resample(rule='2H').median()
-                carr_lons, psp_r, psp_lats, psp_lon = suppress_output(get_coordinates.get_coordinates, coord_df, 'PSP')
+                # # GET COORDINATES
+                # coord_df = fields_loop_df.resample(rule='2H').median()
+                # carr_lons, psp_r, psp_lats, psp_lon = suppress_output(get_coordinates.get_coordinates, coord_df, 'PSP')
                 
-                coord_df['CARR_LON'] = carr_lons      
-                coord_df['CARR_LON_RAD'] = coord_df['CARR_LON']/180*3.1415926
-                coord_df['LAT'] = psp_lats
+                # coord_df['CARR_LON'] = carr_lons      
+                # coord_df['CARR_LON_RAD'] = coord_df['CARR_LON']/180*3.1415926
+                # coord_df['LAT'] = psp_lats
 
-                psp_lon = np.asarray(psp_lon)
-                if (psp_lon < -175).any() & (psp_lon > 175).any():
-                    psp_lon[psp_lon < 0] += 360
+                # psp_lon = np.asarray(psp_lon)
+                # if (psp_lon < -175).any() & (psp_lon > 175).any():
+                #     psp_lon[psp_lon < 0] += 360
 
-                coord_df['INERT_LON'] = psp_lon
+                # coord_df['INERT_LON'] = psp_lon
 
-                coord_df = coord_df.reindex(fields_loop_df.index).interpolate(method='linear')
-                fields_loop_df['CARR_LON'] = coord_df['CARR_LON'] *np.nan
-                fields_loop_df.loc[coord_df.index, 'CARR_LON'] = get_coordinates.calculate_carrington_longitude_from_lon(coord_df.index, coord_df['INERT_LON'])
-                fields_loop_df['CARR_LON_RAD'] = fields_loop_df['CARR_LON']/180*3.1415926
-                fields_loop_df['LAT'] = coord_df['LAT'].copy()
-                fields_loop_df['INERT_LON'] = coord_df['INERT_LON'].copy()
+                # coord_df = coord_df.reindex(fields_loop_df.index).interpolate(method='linear')
+                # fields_loop_df['CARR_LON'] = coord_df['CARR_LON'] *np.nan
+                # fields_loop_df.loc[coord_df.index, 'CARR_LON'] = get_coordinates.calculate_carrington_longitude_from_lon(coord_df.index, coord_df['INERT_LON'])
+                # fields_loop_df['CARR_LON_RAD'] = fields_loop_df['CARR_LON']/180*3.1415926
+                # fields_loop_df['LAT'] = coord_df['LAT'].copy()
+                # fields_loop_df['INERT_LON'] = coord_df['INERT_LON'].copy()
             
 
                 fields_df.append(fields_loop_df)
@@ -159,11 +214,12 @@ def reduce(timeframe, cadence='0.1H'):
         print('### NO SPC FILES ###')
         index = pd.to_datetime([timeframe[0]])
         spc_df = pd.DataFrame(index=index, columns=['N'])
-        if len(spi_df['DENS'])>1:
-            print('### USING SPI DENSITY ###')
-            spc_df['N'] = spi_df['DENS']
-  
-    psp_df = pd.concat([spc_df, spi_df, fields_df], axis=1)
+        if len(spi_files) > 0:
+            if len(spi_df['DENS'])>1:
+                print('### USING SPI DENSITY ###')
+                spc_df['N'] = spi_df['DENS']
+
+    psp_df = pd.concat([coords_df, spc_df, spi_df, fields_df], axis=1)
 
 
     #Calculate further plasma parameters
@@ -177,7 +233,9 @@ def reduce(timeframe, cadence='0.1H'):
         psp_df['POL'] = np.sign(-1)
     psp_df['S_P'] = psp_df['T']/psp_df['N']**(2./3.)/11604.5
 
-    psp_df['Spacecraft_ID'] = 1
+
+    if len(spi_files) + len(spc_files) + len(fields_files) == 0:
+        print('### NO FILES; JUST COORDS ###')
 
     return psp_df
 

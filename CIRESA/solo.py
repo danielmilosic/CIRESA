@@ -11,10 +11,14 @@ def download(timeframe):
 def reduce(timeframe, cadence):
 
     from CIRESA import filefinder, read_cdf_to_df, get_coordinates
+    from CIRESA.utils import suppress_output
     import pandas as pd
     import numpy as np
     from astropy.time import Time
     import os
+
+    if isinstance(timeframe, str):
+        timeframe = filefinder.get_month_dates(timeframe)
 
     root_dir = 'solar_orbiter_data/'
     
@@ -27,6 +31,54 @@ def reduce(timeframe, cadence):
     mag_files = filefinder.find_files_in_timeframe(dir_mag, timeframe[0], timeframe[1])
 
     print(swa_files, his_files, mag_files)
+
+       
+    # GET COORDINATES
+
+    print('DOWNLOADING COORDINATES')
+
+    coords_df = pd.DataFrame()
+    date_range = pd.date_range(timeframe[0], timeframe[1], freq='D').tolist()[:-1]
+    
+    for day in date_range:
+
+        print(day)
+
+        day_start = day
+        day_end = day + pd.Timedelta(days=1)
+        
+        # Create coord_df for the day with 2-hour intervals
+        coord_df = pd.DataFrame({'Time': pd.date_range(day_start, day_end, freq='2H')})
+        coord_df.set_index('Time', inplace=True)
+
+        # Get coordinates
+        #print('between here')
+        carr_lons, r, lats, lon = suppress_output(get_coordinates.get_coordinates, coord_df, 'Solar Orbiter')
+        #print('and here there is an erfa warning')
+        coord_df['LAT'] = lats
+        coord_df['R'] = r
+
+        lon = np.asarray(lon)
+        if (lon < -175).any() & (lon > 175).any():
+            lon[lon < 0] += 360
+
+        coord_df['INERT_LON'] = lon
+        # Interpolate to match df's index
+
+        coord_df = coord_df.resample(rule = cadence).interpolate(method='linear')
+        carr_lon = get_coordinates.calculate_carrington_longitude_from_lon(
+            coord_df.index, coord_df['INERT_LON']
+        )
+        
+        coord_df['CARR_LON'] = carr_lon
+
+        #print(coord_df)
+        coords_df = pd.concat([coords_df, coord_df])
+
+    coords_df = coords_df[~coords_df.index.duplicated(keep='first')]
+
+    coords_df['CARR_LON_RAD'] = coords_df['CARR_LON'] / 180 * np.pi
+
 
     #MAG
 
@@ -99,27 +151,6 @@ def reduce(timeframe, cadence):
         swa_df_nod = swa_df[~swa_df.index.duplicated(keep='first')]
         swa_df = swa_df_nod.resample(cadence).median()
 
-        # GET COORDINATES
-        coord_df = swa_df.resample(rule='6H').median()
-        carr_lons, solo_r, solo_lats, solo_lon = get_coordinates.get_coordinates(coord_df, 'Solar Orbiter')
-        coord_df['CARR_LON'] = np.asarray(carr_lons) % 360
-        coord_df['LAT'] = solo_lats
-        solo_lon = np.asarray(solo_lon)
-        if (solo_lon < -175).any() & (solo_lon > 175).any():
-            solo_lon[solo_lon < 0] += 360
-
-        coord_df['INERT_LON'] = solo_lon
-        coord_df['R'] = solo_r
-
-        coord_df = coord_df.reindex(swa_df.index).interpolate(method='linear')
-        swa_df['CARR_LON'] = coord_df['CARR_LON'].copy()*np.nan
-        swa_df.loc[coord_df.index, 'CARR_LON'] = get_coordinates.calculate_carrington_longitude_from_lon(coord_df.index, coord_df['INERT_LON'])
-        swa_df['CARR_LON_RAD'] = swa_df['CARR_LON']/180*3.1415926
-        swa_df['LAT'] = coord_df['LAT'].copy()
-    
-        swa_df['INERT_LON'] = coord_df['INERT_LON'].copy()
-        swa_df['R'] = coord_df['R'].copy()
-
     else:
         print('### NO SWA FILES ###')
         index = pd.to_datetime([timeframe[0]])
@@ -147,7 +178,7 @@ def reduce(timeframe, cadence):
     swa_df = swa_df[~swa_df.index.duplicated()]
     mag_df = mag_df[~mag_df.index.duplicated()]
 
-    solo_df = pd.concat([his_df, swa_df, mag_df], axis=1)
+    solo_df = pd.concat([coords_df, his_df, swa_df, mag_df], axis=1)
 
 
     #Calculate further plasma parameters

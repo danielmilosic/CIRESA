@@ -1,3 +1,5 @@
+from CIRESA.utils import suppress_output
+
 def download(timeframe):
     import pyspedas
 
@@ -12,9 +14,60 @@ def reduce(timeframe, cadence):
     import numpy as np
     from astropy.time import Time
 
+    if isinstance(timeframe, str):
+        timeframe = filefinder.get_month_dates(timeframe)
+
     root_dir = 'omni_data/'
     omni_files = filefinder.find_files_in_timeframe(root_dir, timeframe[0], timeframe[1])
     print(omni_files)
+
+        
+    # GET COORDINATES
+
+    print('DOWNLOADING COORDINATES')
+
+    coords_df = pd.DataFrame()
+    date_range = pd.date_range(timeframe[0], timeframe[1], freq='D').tolist()[:-1]
+    
+    for day in date_range:
+
+        print(day)
+
+        day_start = day
+        day_end = day + pd.Timedelta(days=1)
+        
+        # Create coord_df for the day with 2-hour intervals
+        coord_df = pd.DataFrame({'Time': pd.date_range(day_start, day_end, freq='2H')})
+        coord_df.set_index('Time', inplace=True)
+
+        # Get coordinates
+        #print('between here')
+        carr_lons, r, lats, lon = suppress_output(get_coordinates.get_coordinates, coord_df, '3')
+        #print('and here there is an erfa warning')
+        coord_df['LAT'] = lats
+        coord_df['R'] = r
+
+        lon = np.asarray(lon)
+        if (lon < -175).any() & (lon > 175).any():
+            lon[lon < 0] += 360
+
+        coord_df['INERT_LON'] = lon
+        # Interpolate to match df's index
+
+        coord_df = coord_df.resample(rule = cadence).interpolate(method='linear')
+        carr_lon = get_coordinates.calculate_carrington_longitude_from_lon(
+            coord_df.index, coord_df['INERT_LON']
+        )
+        
+        coord_df['CARR_LON'] = carr_lon
+
+        #print(coord_df)
+        coords_df = pd.concat([coords_df, coord_df])
+
+    coords_df = coords_df[~coords_df.index.duplicated(keep='first')]
+
+    coords_df['CARR_LON_RAD'] = coords_df['CARR_LON'] / 180 * np.pi
+
 
     variables_to_read = ['Epoch', 'proton_density', 
                          'Vy', 'flow_speed', 
@@ -42,29 +95,7 @@ def reduce(timeframe, cadence):
     omni_df = omni_df.resample(rule=cadence).median()
     omni_df.drop(columns=variables_to_delete, axis=1, inplace=True)
 
- 
-    # GET COORDINATES
-    coord_df = omni_df.resample(rule='6H').median()
-    carr_lons, omni_r, omni_lats, omni_lon = get_coordinates.get_coordinates(coord_df, '3')
-    coord_df['CARR_LON'] = np.asarray(carr_lons) % 360
-    coord_df['LAT'] = omni_lats
-    omni_lon = np.asarray(omni_lon)
-    if (omni_lon < -175).any() & (omni_lon > 175).any():
-        omni_lon[omni_lon < 0] += 360
-
-    coord_df['INERT_LON'] = omni_lon
-    coord_df['R'] = omni_r
-
-    coord_df = coord_df.reindex(omni_df.index).interpolate(method='linear')
-    omni_df['CARR_LON'] = coord_df['CARR_LON'].copy()*np.nan
-    omni_df['INERT_LON'] = coord_df['INERT_LON'].copy()
-    omni_df.loc[coord_df.index, 'CARR_LON'] = get_coordinates.calculate_carrington_longitude_from_lon(coord_df.index, coord_df['INERT_LON'])
-    omni_df['CARR_LON_RAD'] = omni_df['CARR_LON']/180*3.1415926
-    omni_df['LAT'] = coord_df['LAT'].copy()
-   
-    omni_df['INERT_LON'] = coord_df['INERT_LON'].copy()
-    omni_df['R'] = coord_df['R'].copy()
-
+    omni_df = pd.concat([coords_df, omni_df], axis=1)
     #Calculate further plasma parameters
     omni_df['P_t'] = (omni_df['N'] * omni_df['V']**2) / 10**19 / 1.6727   * 10**6 *10**9 # J/cm^3 to nPa
     omni_df['P_B'] = omni_df['B']**2 / 2. / 1.25663706212*10**(-6) / 10**9    * 10**6 *10**9 #nT to T # J/cm^3 to nPa
@@ -75,6 +106,8 @@ def reduce(timeframe, cadence):
     
     omni_df.loc[omni_df['T'] > 10**6, 'T'] = np.nan
     omni_df.loc[omni_df['S_P'] > 50, 'S_P'] = np.nan
+
+
     omni_df['Spacecraft_ID'] = 6
 
     return omni_df

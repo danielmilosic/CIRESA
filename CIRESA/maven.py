@@ -93,10 +93,15 @@ def download(timeframe):
 def reduce(timeframe, cadence = '0.1H'):
 
     from CIRESA import filefinder, read_cdf_to_df, get_coordinates
+    from CIRESA.utils import suppress_output
     import pandas as pd
     import numpy as np
     from astropy.time import Time
     import os
+
+
+    if isinstance(timeframe, str):
+        timeframe = filefinder.get_month_dates(timeframe)
 
     root_dir = 'maven_data/'
     
@@ -109,6 +114,56 @@ def reduce(timeframe, cadence = '0.1H'):
     maven_files = filefinder.find_files_in_timeframe(dir_maven, timeframe[0], timeframe[1])
     maven_files = [file for file in maven_files if os.path.getsize(file) >= 1_048_576]
     print('maven files:', maven_files)
+
+           
+    # GET COORDINATES
+
+    print('DOWNLOADING COORDINATES')
+
+    coords_df = pd.DataFrame()
+    date_range = pd.date_range(timeframe[0], timeframe[1], freq='D').tolist()[:-1]
+    
+    for day in date_range:
+
+        print(day)
+
+        day_start = day
+        day_end = day + pd.Timedelta(days=1)
+        
+        # Create coord_df for the day with 2-hour intervals
+        coord_df = pd.DataFrame({'Time': pd.date_range(day_start, day_end, freq='2H')})
+        coord_df.set_index('Time', inplace=True)
+
+        # Get coordinates
+        #print('between here')
+        carr_lons, r, lats, lon = suppress_output(get_coordinates.get_coordinates, coord_df, 'MAVEN')
+        #print('and here there is an erfa warning')
+        coord_df['LAT'] = lats
+        coord_df['R'] = r
+
+        lon = np.asarray(lon)
+        if (lon < -175).any() & (lon > 175).any():
+            lon[lon < 0] += 360
+
+        coord_df['INERT_LON'] = lon
+        # Interpolate to match df's index
+
+        coord_df = coord_df.resample(rule = cadence).interpolate(method='linear')
+        carr_lon = get_coordinates.calculate_carrington_longitude_from_lon(
+            coord_df.index, coord_df['INERT_LON']
+        )
+        
+        coord_df['CARR_LON'] = carr_lon
+
+        #print(coord_df)
+        coords_df = pd.concat([coords_df, coord_df])
+
+    coords_df = coords_df[~coords_df.index.duplicated(keep='first')]
+
+    coords_df['CARR_LON_RAD'] = coords_df['CARR_LON'] / 180 * np.pi
+
+
+
     print('### EXTRACTING mavenNETIC FIELD DATA ###')
     
     if len(maven_files) > 0:
@@ -159,29 +214,8 @@ def reduce(timeframe, cadence = '0.1H'):
         #print(maven_df)
         maven_df = maven_df.resample(cadence).median()
 
+        maven_df = pd.concat([coords_df, maven_df], axis=1)
 
-        # GET COORDINATES
-        coord_df = maven_df.resample(rule='6H').median()
-        carr_lons, maven_r, maven_lats, maven_lon = get_coordinates.get_coordinates(coord_df, 'MAVEN')
-        coord_df['CARR_LON'] = np.asarray(carr_lons) % 360
-        coord_df['LAT'] = maven_lats
-
-        maven_lon = np.asarray(maven_lon)
-        if (maven_lon < -175).any() & (maven_lon > 175).any():
-            maven_lon[maven_lon < 0] += 360
-
-        coord_df['INERT_LON'] = maven_lon
-        coord_df['R'] = maven_r
-
-        coord_df = coord_df.reindex(maven_df.index).interpolate(method='linear')
-        maven_df['CARR_LON'] = coord_df['CARR_LON'].copy()*np.nan
-        maven_df.loc[coord_df.index, 'CARR_LON'] = get_coordinates.calculate_carrington_longitude_from_lon(coord_df.index, coord_df['INERT_LON'])
-        maven_df['CARR_LON_RAD'] = maven_df['CARR_LON']/180*3.1415926
-        maven_df['LAT'] = coord_df['LAT'].copy()
-    
-        maven_df['INERT_LON'] = coord_df['INERT_LON'].copy()
-        maven_df['R'] = coord_df['R'].copy()
-        
 
         #Calculate further plasma parameters
         maven_df['P_t'] = (maven_df['N'] * maven_df['V']**2) / 10**19 / 1.6727   * 10**6 *10**9 # J/cm^3 to nPa
@@ -200,6 +234,7 @@ def reduce(timeframe, cadence = '0.1H'):
                             columns=['V_R', 'V_T', 'V_N'
                                      , 'V', 'T', 'R', 'N'])
         
+        maven_df = pd.concat([coords_df, maven_df], axis=1)
         maven_df['Spacecraft_ID'] = 7
         
     return maven_df
@@ -207,7 +242,9 @@ def reduce(timeframe, cadence = '0.1H'):
 import pandas as pd
 import numpy as np
 
+
 def filter_sw(df, cadence='6H', interpolate=False):
+    
     def process_chunk(chunk):
         if chunk.empty:
             return pd.DataFrame()  # Return an empty DataFrame if the chunk is empty
@@ -285,7 +322,12 @@ def filter_sw(df, cadence='6H', interpolate=False):
     # Process each valid chunk and concatenate the results
     processed_chunks = [process_chunk(chunk) for chunk in valid_chunks]
     result = pd.concat(processed_chunks)
-
+    old_df = df.loc[result.index]
+    try:
+        result[['LAT', 'CARR_LON', 'INERT_LON', 'CARR_LON_RAD']] = old_df[['LAT', 'CARR_LON', 'INERT_LON', 'CARR_LON_RAD']]
+    except Exception as e:
+        print(f'Error processing data: {e}')
+    #print(len(result), len(df.loc[result.index]))
     return result
 
 def plot(maven_df):
@@ -403,8 +445,10 @@ def load(month='all', reduce_cadence=None, interpolate=False):
             df = filter_sw(df, reduce_cadence, interpolate=interpolate)
 
         spacecraft.append(df)
+        result = pd.concat(spacecraft)
+        result = result[~result.index.duplicated(keep='first')]
 
-    return pd.concat(spacecraft)
+    return result
 
 def delete(month):
     
@@ -443,24 +487,26 @@ def download_reduce_save_space(month, cadence):
         month = [month]
 
     for m in month:
-
-        if os.path.exists('reduced_data\maven\maven_data'+m+'.parquet'):
-            maven_df = maven.load(m)
-
+        if pd.to_datetime(m) < pd.to_datetime('2014-03') :
+            print('### NO MAVEN DATA BEFORE 2018-10 ###')
         else:
-            timeframe = filefinder.get_month_dates(m)
+            if os.path.exists('reduced_data\maven\maven_data'+m+'.parquet'):
+                maven_df = maven.load(m)
 
-            maven.download(timeframe)
-            maven_df = maven.reduce(timeframe, cadence)
-            maven_df.to_parquet('reduced_data\maven\maven_data'+m+'.parquet')
+            else:
+                timeframe = filefinder.get_month_dates(m)
 
-        try:
-            # Plot and save the figure
-            maven.plot(maven_df)
-            plt.savefig(f'maven_data/monthly_plots/maven_{m}.png')
-            plt.close()  # Close the plot to free up memory
-        except Exception as e:
-            print(f"Error plotting data for {m}: {e}")
-        finally:
-            # Ensure maven.delete() is called regardless of success or failure
-            maven.delete(m)
+                maven.download(timeframe)
+                maven_df = maven.reduce(timeframe, cadence)
+                maven_df.to_parquet('reduced_data\maven\maven_data'+m+'.parquet')
+
+            try:
+                # Plot and save the figure
+                maven.plot(maven_df)
+                plt.savefig(f'maven_data/monthly_plots/maven_{m}.png')
+                plt.close()  # Close the plot to free up memory
+            except Exception as e:
+                print(f"Error plotting data for {m}: {e}")
+            finally:
+                # Ensure maven.delete() is called regardless of success or failure
+                maven.delete(m)

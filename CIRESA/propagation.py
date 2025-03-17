@@ -21,6 +21,7 @@ def inelastic_radial(spacecraft, degree_resolution=0.5, COR=0):
             'CARR_LON_RAD'*: carrington longitude in radians
             'Spacecraft_ID': 1-7
             'Region': identified CIR Region
+            'TT': travel time
 
             cadence: the cadence with which the model runs
 
@@ -58,8 +59,7 @@ def inelastic_radial(spacecraft, degree_resolution=0.5, COR=0):
         spacecraft['Spacecraft'] = spacecraft['V']*np.nan
 
     spacecraft = spacecraft[['N', 'V', 'R', 'CARR_LON_RAD', 'Region', 'Spacecraft_ID']]
-    
-    spacecraft_filtered = spacecraft.dropna(subset=['V', 'N'])
+    spacecraft_filtered = spacecraft.loc[~spacecraft.index.isna()].dropna(subset=['V', 'N'])
     spacecraft = pad_data_with_nans(spacecraft_filtered.resample(rule=cadence).median()
                                     ,spacecraft.index[0]
                                     ,spacecraft.index[-1], cadence=cadence)
@@ -81,9 +81,10 @@ def inelastic_radial(spacecraft, degree_resolution=0.5, COR=0):
         'ITERATION': sim[:, 4],
         'Region': np.round(sim[:,5]),
         'Spacecraft_ID': ID,
+        'TT': sim[:, 7] * cadence_minutes/60
 
-    }, index=spacecraft.index[0] + sim[:, 4] * pd.Timedelta(cadence))
-    
+    }, index=spacecraft.index[0] + sim[:, 7] * pd.Timedelta(cadence))
+
     return output_data
 
 
@@ -168,8 +169,10 @@ def ballistic(spacecraft, degree_resolution=0.5, COR=0):
         'N': sim[:, 0],
         'ITERATION': sim[:, 4],
         'Region': np.round(sim[:,5]),
-        'Spacecraft_ID': np.round(sim[:,6])
-    }, index=spacecraft.index[0] + sim[:, 4] * pd.Timedelta(cadence))
+        'Spacecraft_ID': np.round(sim[:,6]),
+        'TT': sim[:, 7] * cadence_minutes/60
+
+    }, index=spacecraft.index[0] + sim[:, 7] * pd.Timedelta(cadence))
     
     return output_data
 
@@ -258,9 +261,10 @@ def ballistic_reverse(spacecraft, degree_resolution=0.5, COR=0):
         'N': sim[:, 0],
         'ITERATION': sim[:, 4],
         'Region': np.round(sim[:,5]),
-        'Spacecraft_ID': ID,
+        'Spacecraft_ID': np.round(sim[:,6]),
+        'TT': sim[:, 7] * cadence_minutes/60
 
-    }, index=spacecraft.index[0] - sim[:, 4] * pd.Timedelta(cadence))
+    }, index=spacecraft.index[0] - sim[:, 7] * pd.Timedelta(cadence))
     
     return output_data
 
@@ -270,17 +274,27 @@ def radial_prop( input_data, L, hours, COR, degree_resolution, type = 'inelastic
     """
     backbone of inelastic_radial_new
     """
-    n = input_data.shape[0]
+    n = input_data.shape[0] -1
 
     # Pre-allocate array with NaN values for the entire structure
-    sim = np.empty((n * (n + 1) // 2, 7))  # 6 columns for 'N', 'V', 'R', 'L', 'ITERATION', 'Region', 'Spacescraft_ID'
+    sim = np.empty((n * (n + 1) // 2, 8))  # 6 columns for 'N', 'V', 'R', 'L', 'ITERATION', 'Region', 'Spacescraft_ID', 'TT'
+    
+    # Generate the iteration sequence 0, 1, 1, 2, 2, 2, 3, 3, 3, 3, ...
+    iteration_values = np.concatenate([np.full(i, i - 1) for i in range(1, n + 1)])
+    sim[:, 4] = iteration_values
+
+    # # Generate the iteration sequence n, n-1, n-1, n-2, n-2, n-2, n-3, n-3, n-3, n-3, ...
+    # tt_values = np.concatenate([np.full(i, n - i) for i in range(1, n + 1)]) 
+    # sim[:, 7] = tt_values
+
+    tt_input =  np.linspace(n-1, 0, n)
 
     # Iterate over n steps for simulation
     for i in range(n):
 
         if i == 0:
             # Initial values for the first step
-            sim[0, 4] = 0 # ITERATION column
+            #sim[0, 4] = 0 # ITERATION column
             sim[0, 1] = input_data[0, 1]  # 'V' column
             sim[0, 0] = input_data[0, 0]  # 'N' column
             sim[0, 2] = input_data[0, 2]  # 'R' column
@@ -288,6 +302,7 @@ def radial_prop( input_data, L, hours, COR, degree_resolution, type = 'inelastic
 
             sim[0, 5] = input_data[0, 4] # Region column
             sim[0, 6] = input_data[0, 5] # Spacecraft_ID column
+            sim[0, 7] = tt_input[0] # TT column
 
         else:
             # Update values based on previous step and input data
@@ -296,7 +311,7 @@ def radial_prop( input_data, L, hours, COR, degree_resolution, type = 'inelastic
             first_previous = i * (i - 1) // 2
             
             #ITERATION
-            sim[first : last + 1, 4] = i
+            sim[first : last + 1, 4] += 1
 
 
             #V
@@ -309,6 +324,11 @@ def radial_prop( input_data, L, hours, COR, degree_resolution, type = 'inelastic
             sim[last, 0] = input_data[i, 0]
 
 
+            #TT
+            sim[first : last + 1, 7] = sim[first_previous : first_previous + i + 1, 7]
+            sim[last, 7] = tt_input[i]
+
+
             #R
             if type == 'reverse':
                 sim[first : last + 1, 2] = sim[first_previous : first_previous + i + 1, 2] - \
@@ -319,6 +339,10 @@ def radial_prop( input_data, L, hours, COR, degree_resolution, type = 'inelastic
                                                sim[first_previous : first_previous + i + 1, 1] / 1.4959787 / 10**8 * hours*3600.
             sim[last, 2] = input_data[i, 2]
 
+            # N decreases quadratically
+            ratio = np.nan_to_num((sim[first_previous : first_previous + i + 1, 0]/sim[first : last + 1, 0]), nan=1.0)
+            #print(ratio)
+            sim[first : last + 1, 0] *= ratio**2
 
             #CARR_LON_RAD
             if type == 'reverse':
@@ -405,13 +429,23 @@ def cut_from_sim(sim, spacecraft=None):
             'CARR_LON_RAD': np.linspace(0, 2*np.pi, 720),
             'R': np.ones(720) * spacecraft # 1AU
         })
-        
+    
+    if isinstance(spacecraft, pd.DataFrame):
+        spacecraft = pd.DataFrame({
+            'CARR_LON_RAD': spacecraft['CARR_LON_RAD'],
+            'R': spacecraft['R'],  # 1AU
+        })
+        spacecraft.reset_index(drop=True, inplace=True)
+    
     sim = sim.reset_index(drop=True)
 
     # Create an empty array to store the closest 'V' values
     closest_V = np.empty(len(spacecraft))
+    closest_N = np.empty(len(spacecraft))
+    closest_TT = np.empty(len(spacecraft))
     Region = np.zeros(len(spacecraft))
     Space_ID = np.zeros(len(spacecraft))
+    Iteration = np.zeros(len(spacecraft))
 
     # Iterate over each row in the spacecraft DataFrame
     for i, row in spacecraft.iterrows():
@@ -419,19 +453,25 @@ def cut_from_sim(sim, spacecraft=None):
         distances = np.sqrt((sim['CARR_LON_RAD'] - row['CARR_LON_RAD'])**2 +
                             (sim['R'] - row['R'])**2)
         
+        #print(distances)
         # Find the index of the minimum distance
-        closest_idx = distances.idxmin()
-
+        if len(distances)>0:
+            closest_idx = distances.idxmin()
+        else:
+            closest_idx = np.nan
         # Store the corresponding 'V' value, Region and Spacecraft ID
         if not np.isnan(closest_idx):
             closest_V[i] = sim.loc[closest_idx, 'V']
+            closest_N[i] = sim.loc[closest_idx, 'N']
+            closest_TT[i] = sim.loc[closest_idx, 'TT']
 
             if 'Region' in sim:
                 Region[i] = sim.loc[closest_idx, 'Region']
             if 'Spacecraft_ID' in sim:
                 Space_ID[i] = sim.loc[closest_idx, 'Spacecraft_ID']
+            Iteration[i] = sim.loc[closest_idx, 'ITERATION']
             
-            if abs(sim.loc[closest_idx, 'CARR_LON_RAD'] - row['CARR_LON_RAD']) > 1 / 180 * np.pi:
+            if abs(sim.loc[closest_idx, 'CARR_LON_RAD'] - row['CARR_LON_RAD']) > 0.1 / 180 * np.pi:
                 
                 closest_V[i] = np.nan
                 if 'Region' in sim:
@@ -447,8 +487,11 @@ def cut_from_sim(sim, spacecraft=None):
         'CARR_LON_RAD': spacecraft['CARR_LON_RAD'],
         'R': spacecraft['R'],
         'V': closest_V,
+        'N': closest_N, 
         'Region': Region,
-        'Spacecraft_ID': Space_ID
+        'Spacecraft_ID': Space_ID,
+        'ITERATION': Iteration,
+        'TT': closest_TT
     })
     
-    return result
+    return result.dropna(subset=['CARR_LON_RAD', 'R', 'V'])
