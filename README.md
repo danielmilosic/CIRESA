@@ -12,4 +12,10 @@ And some other use cases. \
 \
 A comprehensive tutorial for the use of this tool can be found in the jupyter notebook Examples.ipynb
 \
-![alt text](CIR.png)
+\
+![alt text](CIR.png)\
+This figure shows in-situ data from OMNI with identified CIR regions.\
+Color code:\
+Yellow: Perturbed slow wind\
+Red: Perturbed fast wind\
+Black: Background solar wind
