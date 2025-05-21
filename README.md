@@ -1,6 +1,7 @@
 ## CIRESA - CIR Evolution and Structure Analysis
 
 This Code serves as a tool for:\
+\
 -loading in-situ data\
 -finding CIRs\
 -semi-automatically define regions of CIRs\
@@ -10,3 +11,5 @@ This Code serves as a tool for:\
 And some other use cases. \
 \
 A comprehensive tutorial for the use of this tool can be found in the jupyter notebook Examples.ipynb
+\
+![alt text](CIR.png)
